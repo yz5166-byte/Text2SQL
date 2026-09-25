@@ -1,0 +1,171 @@
+# 物理层元数据字典
+# 用途：第三层 schema 上下文渲染、知识检索、口径与数据资产问答。
+# 金额单位：原始 PKDD'99 文档为捷克克朗（CZK）；BIRD 字段说明标注为 USD，本项目以原始文档为准。
+# 数据范围：交易 1993-01-01 至 1998-12-31。
+
+tables:
+  account:
+    name_zh: 账户表
+    layer: ODS
+    grain: 一行代表一个银行账户，共 4,500 个
+    description: 账户基本信息，包含开户网点所在区县、账单频率与开户日期。
+    columns:
+      account_id: {type: INTEGER, name_zh: 账户ID, description: 账户唯一标识，主键}
+      district_id: {type: INTEGER, name_zh: 开户网点区县ID, description: 关联 district.district_id}
+      frequency: {type: TEXT, name_zh: 账单频率, description: 对账单出具频率, dimension: account_frequency}
+      date: {type: DATE, name_zh: 开户日期, description: 格式 YYYY-MM-DD，范围 1993-01-01 至 1997-12-29}
+
+  client:
+    name_zh: 客户表
+    layer: ODS
+    grain: 一行代表一个客户，共 5,369 个
+    description: 客户基本属性。
+    columns:
+      client_id: {type: INTEGER, name_zh: 客户ID, description: 客户唯一标识，主键}
+      gender: {type: TEXT, name_zh: 性别, description: M 为男性，F 为女性, dimension: owner_gender}
+      birth_date: {type: DATE, name_zh: 出生日期, description: 格式 YYYY-MM-DD，范围 1911-08-20 至 1987-09-27}
+      district_id: {type: INTEGER, name_zh: 客户所属区县ID, description: 关联 district.district_id}
+
+  disp:
+    name_zh: 账户权限关系表
+    layer: ODS
+    grain: 一行代表一个客户对一个账户的一种权限关系，共 5,369 条
+    description: 连接客户与账户。type 为 OWNER 表示账户所有人（每个账户恰有一个），DISPONENT 表示授权使用人。
+    notes: 按账户统计客户属性时须限定 type = 'OWNER'，否则一个账户对应多条关系会导致重复计数。
+    columns:
+      disp_id: {type: INTEGER, name_zh: 权限关系ID, description: 主键}
+      client_id: {type: INTEGER, name_zh: 客户ID, description: 关联 client.client_id}
+      account_id: {type: INTEGER, name_zh: 账户ID, description: 关联 account.account_id}
+      type: {type: TEXT, name_zh: 权限类型, description: OWNER 账户所有人（4,500 条）；DISPONENT 授权使用人（869 条）}
+
+  card:
+    name_zh: 信用卡表
+    layer: ODS
+    grain: 一行代表一张卡，共 892 张
+    description: 已发行的信用卡，通过 disp 关联到持卡客户与账户。
+    columns:
+      card_id: {type: INTEGER, name_zh: 卡ID, description: 主键}
+      disp_id: {type: INTEGER, name_zh: 权限关系ID, description: 关联 disp.disp_id}
+      type: {type: TEXT, name_zh: 卡等级, description: junior 青少年卡、classic 普通卡、gold 金卡, dimension: card_type}
+      issued: {type: DATE, name_zh: 发卡日期, description: 格式 YYYY-MM-DD，范围 1993-11-07 至 1998-12-29}
+
+  loan:
+    name_zh: 贷款表
+    layer: ODS
+    grain: 一行代表一笔贷款，共 682 笔，每个账户至多一笔
+    description: 贷款合同信息与还款状态。
+    notes: 不良贷款指 status 为 B 或 D。按放款日期归属统计（vintage 口径），1998 年放款账龄短，不良率天然偏低。
+    columns:
+      loan_id: {type: INTEGER, name_zh: 贷款ID, description: 主键}
+      account_id: {type: INTEGER, name_zh: 账户ID, description: 关联 account.account_id}
+      date: {type: DATE, name_zh: 放款日期, description: 格式 YYYY-MM-DD，范围 1993-07-05 至 1998-12-08}
+      amount: {type: INTEGER, name_zh: 放款金额, description: 贷款本金}
+      duration: {type: INTEGER, name_zh: 贷款期限, description: 单位为月，取值 12、24、36、48、60, dimension: loan_term}
+      payments: {type: REAL, name_zh: 月还款额, description: 每月应还金额}
+      status: {type: TEXT, name_zh: 还款状态, description: A 已结清无逾期；B 已结清未还清；C 履约中正常；D 履约中欠款, dimension: loan_status}
+
+  order:
+    name_zh: 代扣指令表
+    layer: ODS
+    grain: 一行代表一条长期代付指令，共 6,471 条
+    description: 账户设置的长期定额代付指令。
+    notes: 表名 order 是 SQL 保留字，查询时必须写作 "order"。k_symbol 缺失值为空串 ''（1,379 条）。
+    columns:
+      order_id: {type: INTEGER, name_zh: 指令ID, description: 主键}
+      account_id: {type: INTEGER, name_zh: 付款账户ID, description: 关联 account.account_id}
+      bank_to: {type: TEXT, name_zh: 收款行代码, description: 两位字母银行代码}
+      account_to: {type: INTEGER, name_zh: 收款账号, description: 收款方账号}
+      amount: {type: REAL, name_zh: 代扣金额, description: 每期扣款金额}
+      k_symbol: {type: TEXT, name_zh: 代扣用途, description: POJISTNE 保险费；SIPO 家庭缴费；LEASING 租赁；UVER 贷款还款；空串为未标注}
+
+  trans:
+    name_zh: 交易流水表
+    layer: ODS
+    grain: 一行代表一笔账户交易，共 1,056,320 笔
+    description: 账户交易明细。amount 恒为正，资金方向由 type 表示；balance 为交易后余额，可为负。
+    notes: >-
+      (1) type 除原始文档所列 PRIJEM、VYDAJ 外，还存在 VYBER（16,666 笔现金取现），出账口径须同时包含 VYDAJ 与 VYBER。
+      (2) operation 为 NULL 的 183,114 笔均为利息入账（k_symbol = 'UROK'）。
+      (3) k_symbol 缺失有 NULL（481,881 笔）与单个空格 ' '（53,433 笔）两种写法。
+    columns:
+      trans_id: {type: INTEGER, name_zh: 交易ID, description: 主键}
+      account_id: {type: INTEGER, name_zh: 账户ID, description: 关联 account.account_id}
+      date: {type: DATE, name_zh: 交易日期, description: 格式 YYYY-MM-DD，范围 1993-01-01 至 1998-12-31}
+      type: {type: TEXT, name_zh: 资金方向, description: PRIJEM 入账；VYDAJ 出账；VYBER 现金取现（出账）, dimension: trans_direction}
+      operation: {type: TEXT, name_zh: 交易方式, description: VYBER KARTOU 信用卡取现；VKLAD 现金存入；PREVOD Z UCTU 他行转入；VYBER 现金取现；PREVOD NA UCET 转账至他行；NULL 为利息入账, dimension: trans_operation}
+      amount: {type: INTEGER, name_zh: 交易金额, description: 恒为正数}
+      balance: {type: INTEGER, name_zh: 交易后余额, description: 可为负数，负数表示透支}
+      k_symbol: {type: TEXT, name_zh: 交易用途, description: POJISTNE 保险费；SLUZBY 对账单费；UROK 利息入账；SANKC. UROK 透支罚息；SIPO 家庭缴费；DUCHOD 养老金；UVER 贷款还款；NULL 或 ' ' 为未标注, dimension: trans_purpose}
+      bank: {type: TEXT, name_zh: 对手行代码, description: 两位字母银行代码，行内交易为 NULL}
+      account: {type: INTEGER, name_zh: 对手账号, description: 交易对手账号}
+
+  district:
+    name_zh: 区县人口经济表
+    layer: ODS
+    grain: 一行代表一个区县，共 77 个，分属 8 个地区
+    description: 区县级人口、经济、治安统计，列名为无语义编码 A2 至 A16。
+    notes: A4 至 A7 以文本存储数字，数值比较或排序前需 CAST(... AS INTEGER)；Jesenik 区县的 A12、A15 为空值。
+    columns:
+      district_id: {type: INTEGER, name_zh: 区县ID, description: 主键}
+      A2: {type: TEXT, name_zh: 区县名称, description: 如 Hl.m. Praha、Brno - mesto, dimension: district_name}
+      A3: {type: TEXT, name_zh: 地区名称, description: 8 个地区，如 Prague、south Moravia, dimension: region}
+      A4: {type: TEXT, name_zh: 人口数, description: 文本型数字}
+      A5: {type: TEXT, name_zh: 人口少于499的市镇数, description: 文本型数字}
+      A6: {type: TEXT, name_zh: 人口500至1999的市镇数, description: 文本型数字}
+      A7: {type: TEXT, name_zh: 人口2000至9999的市镇数, description: 文本型数字}
+      A8: {type: INTEGER, name_zh: 人口超过10000的市镇数, description: 整数}
+      A9: {type: INTEGER, name_zh: 城市数, description: 城市数量}
+      A10: {type: REAL, name_zh: 城镇人口比例, description: 百分比数值，如 46.7 表示 46.7%}
+      A11: {type: INTEGER, name_zh: 平均工资, description: 区县平均工资}
+      A12: {type: REAL, name_zh: 1995年失业率, description: 百分比数值；Jesenik 为空}
+      A13: {type: REAL, name_zh: 1996年失业率, description: 百分比数值}
+      A14: {type: INTEGER, name_zh: 每千人企业家数, description: 每千名居民中的企业家数量}
+      A15: {type: INTEGER, name_zh: 1995年犯罪数, description: 1995 年案件数；Jesenik 为空}
+      A16: {type: INTEGER, name_zh: 1996年犯罪数, description: 1996 年案件数}
+
+  dwd_risk_event:
+    name_zh: 风险事件明细表
+    layer: DWD
+    grain: 一行代表一次监测规则命中，共 8,625 条
+    description: 由 3 条监测规则从交易流水中识别的风险事件，由 scripts/build_warehouse.py 生成。
+    notes: >-
+      规则：LARGE_CASH 现金取现单笔不低于 50,000；RAPID_IN_OUT 单笔入账不低于 30,000 且当日起 3 天内同账户出账累计不低于入账额的 90%；
+      OVERDRAFT_PENALTY 因负余额计收的透支罚息。事件日期与金额取触发交易的日期与金额。
+    columns:
+      event_id: {type: INTEGER, name_zh: 事件ID, description: 主键}
+      rule_code: {type: TEXT, name_zh: 规则编码, description: LARGE_CASH、RAPID_IN_OUT、OVERDRAFT_PENALTY, dimension: risk_rule}
+      rule_name: {type: TEXT, name_zh: 规则名称, description: 大额现金取现、快进快出、透支罚息}
+      risk_category: {type: TEXT, name_zh: 风险大类, description: AML 反洗钱类；CREDIT 信用类, dimension: risk_category}
+      account_id: {type: INTEGER, name_zh: 账户ID, description: 关联 account.account_id}
+      district_id: {type: INTEGER, name_zh: 区县ID, description: 账户开户网点区县，冗余维度键，关联 district.district_id}
+      trans_id: {type: INTEGER, name_zh: 触发交易ID, description: 关联 trans.trans_id}
+      event_date: {type: DATE, name_zh: 事件日期, description: 触发交易日期，格式 YYYY-MM-DD}
+      amount: {type: INTEGER, name_zh: 涉及金额, description: 触发交易金额}
+
+  ads_okr_monthly:
+    name_zh: 月度风控 OKR 指标表
+    layer: ADS
+    grain: 一行代表一个月份、一个地区、一个指标的取值
+    description: 由语义层指标定义物化生成的月度核心指标，第一层直接查询该表。
+    notes: region 为 ALL 表示全部地区；比率类指标同时存储分子分母，跨月汇总时用分子之和除以分母之和。
+    columns:
+      stat_month: {type: TEXT, name_zh: 统计月份, description: 格式 YYYY-MM}
+      region: {type: TEXT, name_zh: 地区, description: 取值同 district.A3，ALL 表示全部地区}
+      metric_code: {type: TEXT, name_zh: 指标编码, description: 对应 semantic/metrics.yaml 中的指标}
+      metric_value: {type: REAL, name_zh: 指标值, description: 当月指标值}
+      numerator: {type: REAL, name_zh: 分子, description: 仅比率类指标有值}
+      denominator: {type: REAL, name_zh: 分母, description: 仅比率类指标有值}
+
+# 外键关系（物理层，全部为多对一）；第三层据此渲染 JOIN 路径。
+foreign_keys:
+  - trans.account_id -> account.account_id
+  - loan.account_id -> account.account_id
+  - order.account_id -> account.account_id
+  - disp.account_id -> account.account_id
+  - disp.client_id -> client.client_id
+  - card.disp_id -> disp.disp_id
+  - account.district_id -> district.district_id
+  - client.district_id -> district.district_id
+  - dwd_risk_event.account_id -> account.account_id
+  - dwd_risk_event.district_id -> district.district_id
+  - dwd_risk_event.trans_id -> trans.trans_id

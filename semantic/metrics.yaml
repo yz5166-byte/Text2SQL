@@ -1,0 +1,227 @@
+# 语义层：指标口径（单一事实源）
+# 第一层 OKR 物化表与第二层编译 SQL 均由本文件生成，口径一致由构造保证。
+#
+# agg 取值
+#   count           COUNT(*)，可加
+#   sum             SUM(column)，可加
+#   count_distinct  COUNT(DISTINCT column)，不可加：月值不能累加为季度或年度值
+#   ratio           numerator / denominator，由两个可加指标构成，跨粒度汇总时分子分母分别求和
+# filters 为该指标的口径过滤条件，编译器与用户筛选条件合并。
+# okr: true 表示物化到 ads_okr_monthly，供第一层直接查询。
+
+metrics:
+  trans_cnt:
+    name: 交易笔数
+    aliases: [交易次数, 流水笔数, 交易条数]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: count
+    unit: 笔
+    description: 统计期内交易流水条数，含入账、出账与利息入账。
+
+  trans_amt:
+    name: 交易金额
+    aliases: [交易额, 流水金额, 交易总额]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: sum
+    column: trans.amount
+    unit: 元
+    description: 统计期内全部交易金额之和，入账与出账均按正数累加，反映资金流动规模。
+
+  credit_amt:
+    name: 入账金额
+    aliases: [流入金额, 收入金额, 入金金额, 进账金额, 资金流入]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: sum
+    column: trans.amount
+    filters: ["trans.type = 'PRIJEM'"]
+    unit: 元
+    description: 资金方向为入账（type = 'PRIJEM'）的交易金额之和，含利息入账。
+
+  debit_amt:
+    name: 出账金额
+    aliases: [流出金额, 支出金额, 出金金额, 资金流出]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: sum
+    column: trans.amount
+    filters: ["trans.type IN ('VYDAJ', 'VYBER')"]
+    unit: 元
+    description: 资金方向为出账的交易金额之和。出账编码包含 VYDAJ 与 VYBER，后者未列于原始文档但真实存在。
+
+  cash_withdraw_amt:
+    name: 现金取现金额
+    aliases: [取现金额, 提现金额, 现金支取金额]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: sum
+    column: trans.amount
+    filters: ["trans.operation = 'VYBER'"]
+    unit: 元
+    description: 交易方式为现金取现（operation = 'VYBER'）的金额之和，不含信用卡取现。
+
+  cash_withdraw_cnt:
+    name: 现金取现笔数
+    aliases: [取现笔数, 取现次数, 提现笔数]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: count
+    filters: ["trans.operation = 'VYBER'"]
+    unit: 笔
+    description: 交易方式为现金取现（operation = 'VYBER'）的交易笔数，不含信用卡取现。
+
+  active_account_cnt:
+    name: 活跃账户数
+    aliases: [有交易账户数, 动户数, 交易账户数]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: count_distinct
+    column: trans.account_id
+    unit: 户
+    description: 统计期内至少发生一笔交易的去重账户数。去重计数不可加，季度值不等于各月之和。
+
+  avg_trans_amt:
+    name: 笔均交易金额
+    aliases: [平均交易金额, 笔均金额, 单笔平均金额]
+    domain: 交易
+    table: trans
+    time_column: trans.date
+    agg: ratio
+    numerator: trans_amt
+    denominator: trans_cnt
+    unit: 元
+    description: 交易金额除以交易笔数。
+
+  new_account_cnt:
+    name: 新开户数
+    aliases: [开户数, 新增账户数, 新开账户数, 开户量]
+    domain: 账户
+    table: account
+    time_column: account.date
+    agg: count
+    okr: true
+    unit: 户
+    description: 统计期内开户日期落在期内的账户数。
+
+  card_issued_cnt:
+    name: 发卡量
+    aliases: [发卡数, 新发卡数, 发卡张数]
+    domain: 账户
+    table: card
+    time_column: card.issued
+    agg: count
+    unit: 张
+    description: 统计期内发卡日期落在期内的信用卡张数。
+
+  loan_cnt:
+    name: 放款笔数
+    aliases: [贷款笔数, 放贷笔数, 贷款数, 新增贷款笔数]
+    domain: 信贷
+    table: loan
+    time_column: loan.date
+    agg: count
+    okr: true
+    unit: 笔
+    description: 统计期内放款日期落在期内的贷款笔数。
+
+  loan_amt:
+    name: 放款金额
+    aliases: [贷款金额, 放贷金额, 贷款总额, 新增贷款金额]
+    domain: 信贷
+    table: loan
+    time_column: loan.date
+    agg: sum
+    column: loan.amount
+    okr: true
+    unit: 元
+    description: 统计期内放款日期落在期内的贷款本金之和。
+
+  bad_loan_cnt:
+    name: 不良贷款笔数
+    aliases: [不良笔数, 违约贷款笔数, 坏账笔数, 不良贷款数]
+    domain: 信贷
+    table: loan
+    time_column: loan.date
+    agg: count
+    filters: ["loan.status IN ('B', 'D')"]
+    okr: true
+    unit: 笔
+    description: 状态为 B（已结清未还清）或 D（履约中欠款）的贷款笔数，按放款日期归属（vintage 口径）。
+
+  bad_loan_amt:
+    name: 不良贷款金额
+    aliases: [不良金额, 违约贷款金额, 坏账金额, 贷款损失, 信贷损失]
+    domain: 信贷
+    table: loan
+    time_column: loan.date
+    agg: sum
+    column: loan.amount
+    filters: ["loan.status IN ('B', 'D')"]
+    okr: true
+    unit: 元
+    description: 不良贷款（status 为 B 或 D）的放款本金之和，按放款日期归属（vintage 口径）。
+
+  bad_loan_rate:
+    name: 不良率
+    aliases: [不良贷款率, 违约率, 坏账率, 贷款不良率]
+    domain: 信贷
+    table: loan
+    time_column: loan.date
+    agg: ratio
+    numerator: bad_loan_cnt
+    denominator: loan_cnt
+    okr: true
+    unit: 比例
+    description: 不良贷款笔数除以放款笔数，按放款日期归属（vintage 口径）；近期放款账龄短，不良率偏低。
+
+  risk_event_cnt:
+    name: 风险事件数
+    aliases: [风险事件量, 预警数, 告警数, 预警事件数, 案件数, 风险案件数, 事件数]
+    domain: 风险
+    table: dwd_risk_event
+    time_column: dwd_risk_event.event_date
+    agg: count
+    okr: true
+    unit: 起
+    description: 监测规则命中次数（大额现金取现、快进快出、透支罚息），同一笔交易命中多条规则时分别计数。
+
+  risk_account_cnt:
+    name: 风险账户数
+    aliases: [涉险账户数, 预警账户数, 涉案账户数, 风险户数]
+    domain: 风险
+    table: dwd_risk_event
+    time_column: dwd_risk_event.event_date
+    agg: count_distinct
+    column: dwd_risk_event.account_id
+    okr: true
+    unit: 户
+    description: 统计期内至少命中一次监测规则的去重账户数。去重计数不可加。
+
+  risk_amt:
+    name: 风险涉及金额
+    aliases: [风险金额, 涉案金额, 预警涉及金额, 风险事件金额, 涉险金额]
+    domain: 风险
+    table: dwd_risk_event
+    time_column: dwd_risk_event.event_date
+    agg: sum
+    column: dwd_risk_event.amount
+    okr: true
+    unit: 元
+    description: 风险事件触发交易的金额之和。
+
+# 多义词：命中后不猜测，发起澄清，由用户在候选指标中选择。
+ambiguous_terms:
+  损失: [bad_loan_amt, risk_amt]
+  交易量: [trans_cnt, trans_amt]
+  贷款规模: [loan_cnt, loan_amt]
+  账户数: [new_account_cnt, active_account_cnt, risk_account_cnt]
+  风险情况: [risk_event_cnt, risk_account_cnt, risk_amt]

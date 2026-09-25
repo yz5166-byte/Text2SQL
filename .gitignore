@@ -219,3 +219,11 @@ __marimo__/
 
 # Private interview preparation materials (kept local, never published)
 interview_prep/
+
+# Project data and runtime artifacts (databases are rebuilt by scripts)
+data/raw/
+data/*.sqlite
+data/*.sqlite-journal
+runs/
+.cache/
+data/bird_financial_description/

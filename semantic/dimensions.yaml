@@ -1,0 +1,233 @@
+# 语义层：多对一关系图、时间粒度、维度与枚举值映射
+# 编译器只沿 join_graph 声明的多对一方向寻路，从构造上避免 JOIN 扇出导致的重复计数。
+# 维度值的 aliases 用于值链接：把用户口语（如"取现"）确定性映射为库内编码（如 'VYBER'）。
+
+join_graph:
+  - {from: trans, to: account, condition: "trans.account_id = account.account_id"}
+  - {from: loan, to: account, condition: "loan.account_id = account.account_id"}
+  - {from: card, to: disp, condition: "card.disp_id = disp.disp_id"}
+  - {from: disp, to: account, condition: "disp.account_id = account.account_id"}
+  - {from: account, to: district, condition: "account.district_id = district.district_id"}
+  # 账户所有人：disp 限定 OWNER 后与账户一一对应，保证多对一
+  - {from: account, to: owner_disp, table: disp, condition: "owner_disp.account_id = account.account_id AND owner_disp.type = 'OWNER'"}
+  - {from: owner_disp, to: owner_client, table: client, condition: "owner_client.client_id = owner_disp.client_id"}
+  - {from: dwd_risk_event, to: district, condition: "dwd_risk_event.district_id = district.district_id"}
+  - {from: dwd_risk_event, to: account, condition: "dwd_risk_event.account_id = account.account_id"}
+
+time_grains:
+  day: {label: 日, sql: "strftime('%Y-%m-%d', {col})"}
+  month: {label: 月, sql: "strftime('%Y-%m', {col})"}
+  quarter: {label: 季度, sql: "strftime('%Y', {col}) || '-Q' || ((CAST(strftime('%m', {col}) AS INTEGER) + 2) / 3)"}
+  year: {label: 年, sql: "strftime('%Y', {col})"}
+
+dimensions:
+  region:
+    name: 地区
+    aliases: [区域, 大区, 地域, 各地区, 分地区]
+    column: district.A3
+    description: 账户开户网点所属地区（8 个）
+    values:
+      - {code: "Prague", label: 布拉格, aliases: [布拉格地区, 首都, Praha]}
+      - {code: "central Bohemia", label: 中波希米亚, aliases: [中部波希米亚]}
+      - {code: "south Bohemia", label: 南波希米亚, aliases: [南部波希米亚]}
+      - {code: "west Bohemia", label: 西波希米亚, aliases: [西部波希米亚]}
+      - {code: "north Bohemia", label: 北波希米亚, aliases: [北部波希米亚]}
+      - {code: "east Bohemia", label: 东波希米亚, aliases: [东部波希米亚]}
+      - {code: "south Moravia", label: 南摩拉维亚, aliases: [南部摩拉维亚]}
+      - {code: "north Moravia", label: 北摩拉维亚, aliases: [北部摩拉维亚]}
+
+  district_name:
+    name: 区县
+    aliases: [区县名称, 地市, 城市, 各区县]
+    column: district.A2
+    description: 账户开户网点所属区县（77 个）
+    values:
+      - {code: "Hl.m. Praha", label: 布拉格市, aliases: [布拉格市区]}
+      - {code: "Benesov", label: Benesov}
+      - {code: "Beroun", label: Beroun}
+      - {code: "Kladno", label: 克拉德诺, aliases: [Kladno]}
+      - {code: "Kolin", label: Kolin}
+      - {code: "Kutna Hora", label: Kutna Hora}
+      - {code: "Melnik", label: Melnik}
+      - {code: "Mlada Boleslav", label: Mlada Boleslav}
+      - {code: "Nymburk", label: Nymburk}
+      - {code: "Praha - vychod", label: 布拉格东区, aliases: [Praha vychod]}
+      - {code: "Praha - zapad", label: 布拉格西区, aliases: [Praha zapad]}
+      - {code: "Pribram", label: Pribram}
+      - {code: "Rakovnik", label: Rakovnik}
+      - {code: "Havlickuv Brod", label: Havlickuv Brod}
+      - {code: "Hradec Kralove", label: 赫拉德茨克拉洛韦, aliases: [Hradec Kralove]}
+      - {code: "Chrudim", label: Chrudim}
+      - {code: "Jicin", label: Jicin}
+      - {code: "Nachod", label: Nachod}
+      - {code: "Pardubice", label: 帕尔杜比采, aliases: [Pardubice]}
+      - {code: "Rychnov nad Kneznou", label: Rychnov nad Kneznou}
+      - {code: "Semily", label: Semily}
+      - {code: "Svitavy", label: Svitavy}
+      - {code: "Trutnov", label: Trutnov}
+      - {code: "Usti nad Orlici", label: Usti nad Orlici}
+      - {code: "Ceska Lipa", label: Ceska Lipa}
+      - {code: "Decin", label: Decin}
+      - {code: "Chomutov", label: Chomutov}
+      - {code: "Jablonec n. Nisou", label: Jablonec n. Nisou}
+      - {code: "Liberec", label: 利贝雷茨, aliases: [Liberec]}
+      - {code: "Litomerice", label: Litomerice}
+      - {code: "Louny", label: Louny}
+      - {code: "Most", label: Most}
+      - {code: "Teplice", label: Teplice}
+      - {code: "Usti nad Labem", label: 拉贝河畔乌斯季, aliases: [Usti nad Labem]}
+      - {code: "Bruntal", label: Bruntal}
+      - {code: "Frydek - Mistek", label: Frydek - Mistek}
+      - {code: "Jesenik", label: Jesenik}
+      - {code: "Karvina", label: Karvina}
+      - {code: "Novy Jicin", label: Novy Jicin}
+      - {code: "Olomouc", label: 奥洛穆茨, aliases: [Olomouc]}
+      - {code: "Opava", label: Opava}
+      - {code: "Ostrava - mesto", label: 俄斯特拉发市, aliases: [俄斯特拉发, Ostrava]}
+      - {code: "Prerov", label: Prerov}
+      - {code: "Sumperk", label: Sumperk}
+      - {code: "Vsetin", label: Vsetin}
+      - {code: "Ceske Budejovice", label: 捷克布杰约维采, aliases: [Ceske Budejovice]}
+      - {code: "Cesky Krumlov", label: 克鲁姆洛夫, aliases: [Cesky Krumlov]}
+      - {code: "Jindrichuv Hradec", label: Jindrichuv Hradec}
+      - {code: "Pelhrimov", label: Pelhrimov}
+      - {code: "Pisek", label: Pisek}
+      - {code: "Prachatice", label: Prachatice}
+      - {code: "Strakonice", label: Strakonice}
+      - {code: "Tabor", label: Tabor}
+      - {code: "Blansko", label: Blansko}
+      - {code: "Brno - mesto", label: 布尔诺市, aliases: [布尔诺, Brno]}
+      - {code: "Brno - venkov", label: 布尔诺郊区, aliases: [Brno venkov]}
+      - {code: "Breclav", label: Breclav}
+      - {code: "Hodonin", label: Hodonin}
+      - {code: "Jihlava", label: 伊赫拉瓦, aliases: [Jihlava]}
+      - {code: "Kromeriz", label: Kromeriz}
+      - {code: "Prostejov", label: Prostejov}
+      - {code: "Trebic", label: Trebic}
+      - {code: "Uherske Hradiste", label: Uherske Hradiste}
+      - {code: "Vyskov", label: Vyskov}
+      - {code: "Zlin", label: 兹林, aliases: [Zlin]}
+      - {code: "Znojmo", label: Znojmo}
+      - {code: "Zdar nad Sazavou", label: Zdar nad Sazavou}
+      - {code: "Domazlice", label: Domazlice}
+      - {code: "Cheb", label: Cheb}
+      - {code: "Karlovy Vary", label: 卡罗维发利, aliases: [Karlovy Vary]}
+      - {code: "Klatovy", label: Klatovy}
+      - {code: "Plzen - mesto", label: 比尔森市, aliases: [比尔森, Plzen]}
+      - {code: "Plzen - jih", label: 比尔森南区, aliases: [Plzen jih]}
+      - {code: "Plzen - sever", label: 比尔森北区, aliases: [Plzen sever]}
+      - {code: "Rokycany", label: Rokycany}
+      - {code: "Sokolov", label: Sokolov}
+      - {code: "Tachov", label: Tachov}
+
+  trans_direction:
+    name: 资金方向
+    aliases: [交易方向, 收支方向, 借贷方向]
+    column: trans.type
+    description: 入账或出账；出账包含 VYDAJ 与 VYBER 两种编码
+    values:
+      - {codes: ["PRIJEM"], label: 入账, aliases: [收入, 流入, 转入资金, 入金, 进账, 贷记]}
+      - {codes: ["VYDAJ", "VYBER"], label: 出账, aliases: [支出, 流出, 出金, 付款, 借记]}
+
+  trans_operation:
+    name: 交易方式
+    aliases: [交易渠道, 交易类型, 业务类型, 操作类型]
+    column: trans.operation
+    description: 交易发生方式；NULL 表示利息入账
+    values:
+      - {codes: ["VYBER KARTOU"], label: 信用卡取现, aliases: [刷卡取现, 卡取现, 信用卡提现]}
+      - {codes: ["VKLAD"], label: 现金存入, aliases: [存现, 现金存款, 存入现金]}
+      - {codes: ["PREVOD Z UCTU"], label: 他行转入, aliases: [跨行转入, 转入, 收款转账]}
+      - {codes: ["VYBER"], label: 现金取现, aliases: [取现, 现金支取, 提现, 现金取款, 取款]}
+      - {codes: ["PREVOD NA UCET"], label: 转账至他行, aliases: [跨行转出, 转出, 汇出, 对外转账]}
+      - {codes: [null], label: 利息入账, aliases: [计息]}
+
+  trans_purpose:
+    name: 交易用途
+    aliases: [交易目的, 款项用途, 用途]
+    column: trans.k_symbol
+    description: 交易用途编码；缺失有 NULL 与单个空格两种写法，统一归为未标注
+    values:
+      - {codes: ["POJISTNE"], label: 保险费, aliases: [保险, 保费, 保险缴费]}
+      - {codes: ["SLUZBY"], label: 对账单费, aliases: [账单费, 对账单服务费]}
+      - {codes: ["UROK"], label: 利息入账, aliases: [利息, 存款利息, 利息收入]}
+      - {codes: ["SANKC. UROK"], label: 透支罚息, aliases: [罚息, 负余额罚息, 透支利息]}
+      - {codes: ["SIPO"], label: 家庭缴费, aliases: [生活缴费, 家庭支出]}
+      - {codes: ["DUCHOD"], label: 养老金, aliases: [退休金, 养老金入账]}
+      - {codes: ["UVER"], label: 贷款还款, aliases: [还贷, 还款, 贷款偿还]}
+      - {codes: [null, " "], label: 未标注, aliases: [无用途, 用途缺失]}
+
+  loan_status:
+    name: 贷款状态
+    aliases: [还款状态, 贷款还款状态, 资产质量]
+    column: loan.status
+    description: A 已结清无逾期；B 已结清未还清；C 履约中正常；D 履约中欠款
+    values:
+      - {codes: ["A"], label: 已结清无逾期, aliases: [正常结清]}
+      - {codes: ["B"], label: 已结清未还清, aliases: [结清违约, 到期未还清]}
+      - {codes: ["C"], label: 履约中正常, aliases: [正常还款中]}
+      - {codes: ["D"], label: 履约中欠款, aliases: [逾期中, 在贷逾期, 拖欠]}
+      - {codes: ["B", "D"], label: 不良, aliases: [不良贷款, 违约, 坏账, 问题贷款]}
+      - {codes: ["A", "C"], label: 正常, aliases: [正常贷款, 优质贷款]}
+      - {codes: ["A", "B"], label: 已结清, aliases: [已到期, 结清]}
+      - {codes: ["C", "D"], label: 未结清, aliases: [在贷, 履约中, 存量贷款]}
+
+  loan_term:
+    name: 贷款期限
+    aliases: [期限, 贷款年限, 还款期限]
+    column: loan.duration
+    description: 单位为月
+    values:
+      - {codes: [12], label: 12个月, aliases: [1年期, 一年期, 1年]}
+      - {codes: [24], label: 24个月, aliases: [2年期, 两年期, 二年期, 2年]}
+      - {codes: [36], label: 36个月, aliases: [3年期, 三年期, 3年]}
+      - {codes: [48], label: 48个月, aliases: [4年期, 四年期, 4年]}
+      - {codes: [60], label: 60个月, aliases: [5年期, 五年期, 5年]}
+
+  account_frequency:
+    name: 账单频率
+    aliases: [对账单频率, 出账单频率, 账单周期]
+    column: account.frequency
+    description: 对账单出具频率
+    values:
+      - {codes: ["POPLATEK MESICNE"], label: 按月出账单, aliases: [月结, 每月, 月度账单]}
+      - {codes: ["POPLATEK TYDNE"], label: 按周出账单, aliases: [周结, 每周, 周度账单]}
+      - {codes: ["POPLATEK PO OBRATU"], label: 交易后出账单, aliases: [逐笔出账单, 交易后出单]}
+
+  card_type:
+    name: 卡等级
+    aliases: [卡类型, 信用卡类型, 卡种]
+    column: card.type
+    description: 信用卡等级
+    values:
+      - {codes: ["junior"], label: 青少年卡, aliases: [学生卡, 少年卡]}
+      - {codes: ["classic"], label: 普通卡, aliases: [标准卡, 经典卡]}
+      - {codes: ["gold"], label: 金卡, aliases: [高端卡]}
+
+  owner_gender:
+    name: 账户所有人性别
+    aliases: [性别, 客户性别, 户主性别]
+    column: owner_client.gender
+    description: 经 disp（type = OWNER）关联的账户所有人性别
+    values:
+      - {codes: ["M"], label: 男, aliases: [男性, 男客户]}
+      - {codes: ["F"], label: 女, aliases: [女性, 女客户]}
+
+  risk_rule:
+    name: 风险规则
+    aliases: [监测规则, 预警规则, 规则, 风险类型, 事件类型]
+    column: dwd_risk_event.rule_code
+    description: 风险事件的触发规则
+    values:
+      - {codes: ["LARGE_CASH"], label: 大额现金取现, aliases: [大额取现, 大额现金]}
+      - {codes: ["RAPID_IN_OUT"], label: 快进快出, aliases: [资金快进快出, 过渡户, 资金过渡]}
+      - {codes: ["OVERDRAFT_PENALTY"], label: 透支罚息, aliases: [透支, 罚息]}
+
+  risk_category:
+    name: 风险大类
+    aliases: [风险类别, 风险大类别]
+    column: dwd_risk_event.risk_category
+    description: AML 反洗钱类（大额现金取现、快进快出）；CREDIT 信用类（透支罚息）
+    values:
+      - {codes: ["AML"], label: 反洗钱类, aliases: [反洗钱, 洗钱, 洗钱风险]}
+      - {codes: ["CREDIT"], label: 信用类, aliases: [信用风险, 信用]}
