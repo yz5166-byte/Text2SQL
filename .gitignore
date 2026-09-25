@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Private interview preparation materials (kept local, never published)
+interview_prep/
