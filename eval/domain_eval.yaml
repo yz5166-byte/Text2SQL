@@ -1,0 +1,670 @@
+# 自建风控取数评估集
+#
+# route 取值
+#   L1       可由 OKR 物化表回答（OKR 指标、整月时间、维度与筛选仅限地区、满足可加性）
+#   L2       可由语义层完整表达，但不满足第一层条件
+#   L3       语义层无法表达，需要生成式 SQL
+#   CLARIFY  指标多义或缺失，应发起澄清
+#   OOD      与取数无关，应兜底引导
+#   META     口径与数据资产问答，应由字典直接回答
+#
+# 约定
+#   1. 参考日期 1998-12-31：今年 = 1998，上个月 = 1998-11，近三个月 = 1998-10-01 至 1998-12-31。
+#   2. 金标 SQL 只输出问题所问的列；系统可输出额外说明列（列子集匹配）。
+#   3. 比率以小数表示；趋势周期格式：月 YYYY-MM，季度 YYYY-Qn，年 YYYY。
+#   4. order_matters: true 仅用于明确要求排序的题目；TopN 题比较集合，且已确认边界无并列。
+#   5. 划分：各类别内按序号 i（从 1 开始），i mod 5 属于 {1, 3} 的题目为 dev，其余为 test。
+#   6. alt_irs：与 gold_ir 语义等价的其他解析方式，槽位评分取最优匹配。
+
+items:
+  # ------------------------------------------------------------------ L1：OKR 物化表
+  - id: L1-01
+    route: L1
+    question: 1998年11月的风险事件数是多少？
+    gold_sql: SELECT COUNT(*) FROM dwd_risk_event WHERE event_date BETWEEN '1998-11-01' AND '1998-11-30'
+    gold_ir: {metrics: [risk_event_cnt], query_type: point, time_range: ["1998-11-01", "1998-11-30"]}
+
+  - id: L1-02
+    route: L1
+    question: 上个月风险涉及金额是多少？
+    gold_sql: SELECT COALESCE(SUM(amount), 0) FROM dwd_risk_event WHERE event_date BETWEEN '1998-11-01' AND '1998-11-30'
+    gold_ir: {metrics: [risk_amt], query_type: point, time_range: ["1998-11-01", "1998-11-30"]}
+
+  - id: L1-03
+    route: L1
+    question: 1997年不良贷款金额是多少？
+    gold_sql: SELECT COALESCE(SUM(amount), 0) FROM loan WHERE status IN ('B', 'D') AND date BETWEEN '1997-01-01' AND '1997-12-31'
+    gold_ir: {metrics: [bad_loan_amt], query_type: point, time_range: ["1997-01-01", "1997-12-31"]}
+    alt_irs:
+      - {metrics: [loan_amt], query_type: point, time_range: ["1997-01-01", "1997-12-31"], filters: {loan_status: ["B", "D"]}}
+
+  - id: L1-04
+    route: L1
+    question: 1997年各地区的不良贷款金额分别是多少？
+    gold_sql: >-
+      SELECT d.A3, SUM(l.amount) FROM loan l
+      JOIN account a ON a.account_id = l.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE l.status IN ('B', 'D') AND l.date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY d.A3
+    gold_ir: {metrics: [bad_loan_amt], query_type: breakdown, time_range: ["1997-01-01", "1997-12-31"], dimensions: [region]}
+
+  - id: L1-05
+    route: L1
+    question: 1998年每个月的风险事件数趋势
+    gold_sql: >-
+      SELECT strftime('%Y-%m', event_date) AS m, COUNT(*) FROM dwd_risk_event
+      WHERE event_date BETWEEN '1998-01-01' AND '1998-12-31' GROUP BY m
+    gold_ir: {metrics: [risk_event_cnt], query_type: trend, grain: month, time_range: ["1998-01-01", "1998-12-31"]}
+
+  - id: L1-06
+    route: L1
+    question: 今年以来的放款金额是多少？
+    gold_sql: SELECT COALESCE(SUM(amount), 0) FROM loan WHERE date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [loan_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"]}
+
+  - id: L1-07
+    route: L1
+    question: 1996年的不良率是多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN status IN ('B', 'D') THEN 1 ELSE 0 END) * 1.0 / COUNT(*) FROM loan
+      WHERE date BETWEEN '1996-01-01' AND '1996-12-31'
+    gold_ir: {metrics: [bad_loan_rate], query_type: point, time_range: ["1996-01-01", "1996-12-31"]}
+
+  - id: L1-08
+    route: L1
+    question: 1998年10月南摩拉维亚的风险账户数有多少？
+    gold_sql: >-
+      SELECT COUNT(DISTINCT e.account_id) FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE d.A3 = 'south Moravia' AND e.event_date BETWEEN '1998-10-01' AND '1998-10-31'
+    gold_ir: {metrics: [risk_account_cnt], query_type: point, time_range: ["1998-10-01", "1998-10-31"], filters: {region: ["south Moravia"]}}
+
+  - id: L1-09
+    route: L1
+    question: 1997年新开户数是多少？
+    gold_sql: SELECT COUNT(*) FROM account WHERE date BETWEEN '1997-01-01' AND '1997-12-31'
+    gold_ir: {metrics: [new_account_cnt], query_type: point, time_range: ["1997-01-01", "1997-12-31"]}
+
+  - id: L1-10
+    route: L1
+    question: 1995年到1997年每年的放款笔数
+    gold_sql: >-
+      SELECT strftime('%Y', date) AS y, COUNT(*) FROM loan
+      WHERE date BETWEEN '1995-01-01' AND '1997-12-31' GROUP BY y
+    gold_ir: {metrics: [loan_cnt], query_type: trend, grain: year, time_range: ["1995-01-01", "1997-12-31"]}
+
+  - id: L1-11
+    route: L1
+    question: 1998年11月风险事件数环比变化多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN event_date BETWEEN '1998-11-01' AND '1998-11-30' THEN 1 ELSE 0 END),
+             SUM(CASE WHEN event_date BETWEEN '1998-10-01' AND '1998-10-31' THEN 1 ELSE 0 END)
+      FROM dwd_risk_event
+    gold_ir: {metrics: [risk_event_cnt], query_type: compare, compare: mom, time_range: ["1998-11-01", "1998-11-30"]}
+
+  - id: L1-12
+    route: L1
+    question: 1998年第三季度各地区风险涉及金额
+    gold_sql: >-
+      SELECT d.A3, SUM(e.amount) FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE e.event_date BETWEEN '1998-07-01' AND '1998-09-30' GROUP BY d.A3
+    gold_ir: {metrics: [risk_amt], query_type: breakdown, time_range: ["1998-07-01", "1998-09-30"], dimensions: [region]}
+
+  - id: L1-13
+    route: L1
+    question: 97年各大区的不良率
+    gold_sql: >-
+      SELECT d.A3, SUM(CASE WHEN l.status IN ('B', 'D') THEN 1 ELSE 0 END) * 1.0 / COUNT(*) FROM loan l
+      JOIN account a ON a.account_id = l.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE l.date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY d.A3
+    gold_ir: {metrics: [bad_loan_rate], query_type: breakdown, time_range: ["1997-01-01", "1997-12-31"], dimensions: [region]}
+
+  - id: L1-14
+    route: L1
+    question: 近三个月的风险事件数是多少？
+    gold_sql: SELECT COUNT(*) FROM dwd_risk_event WHERE event_date BETWEEN '1998-10-01' AND '1998-12-31'
+    gold_ir: {metrics: [risk_event_cnt], query_type: point, time_range: ["1998-10-01", "1998-12-31"]}
+
+  - id: L1-15
+    route: L1
+    question: 1997年风险事件数同比增长多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN event_date BETWEEN '1997-01-01' AND '1997-12-31' THEN 1 ELSE 0 END),
+             SUM(CASE WHEN event_date BETWEEN '1996-01-01' AND '1996-12-31' THEN 1 ELSE 0 END)
+      FROM dwd_risk_event
+    gold_ir: {metrics: [risk_event_cnt], query_type: compare, compare: yoy, time_range: ["1997-01-01", "1997-12-31"]}
+
+  - id: L1-16
+    route: L1
+    question: 1997年风险事件数最多的地区是哪个？
+    gold_sql: >-
+      SELECT d.A3 FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE e.event_date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY d.A3 ORDER BY COUNT(*) DESC LIMIT 1
+    gold_ir: {metrics: [risk_event_cnt], query_type: breakdown, time_range: ["1997-01-01", "1997-12-31"], dimensions: [region], order: desc, limit: 1}
+
+  # ------------------------------------------------------------------ L2：语义层编译
+  - id: L2-01
+    route: L2
+    question: 1998年现金取现金额是多少？
+    gold_sql: SELECT COALESCE(SUM(amount), 0) FROM trans WHERE operation = 'VYBER' AND date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [cash_withdraw_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"]}
+
+  - id: L2-02
+    route: L2
+    question: 1997年各交易方式的交易笔数
+    gold_sql: SELECT operation, COUNT(*) FROM trans WHERE date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY operation
+    gold_ir: {metrics: [trans_cnt], query_type: breakdown, time_range: ["1997-01-01", "1997-12-31"], dimensions: [trans_operation]}
+
+  - id: L2-03
+    route: L2
+    question: 1998年入账金额和出账金额分别是多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN type = 'PRIJEM' THEN amount ELSE 0 END),
+             SUM(CASE WHEN type IN ('VYDAJ', 'VYBER') THEN amount ELSE 0 END)
+      FROM trans WHERE date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [credit_amt, debit_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"]}
+
+  - id: L2-04
+    route: L2
+    question: 1997年第四季度风险账户数是多少？
+    gold_sql: SELECT COUNT(DISTINCT account_id) FROM dwd_risk_event WHERE event_date BETWEEN '1997-10-01' AND '1997-12-31'
+    gold_ir: {metrics: [risk_account_cnt], query_type: point, time_range: ["1997-10-01", "1997-12-31"]}
+
+  - id: L2-05
+    route: L2
+    question: 1998年各风险规则的事件数
+    gold_sql: SELECT rule_code, COUNT(*) FROM dwd_risk_event WHERE event_date BETWEEN '1998-01-01' AND '1998-12-31' GROUP BY rule_code
+    gold_ir: {metrics: [risk_event_cnt], query_type: breakdown, time_range: ["1998-01-01", "1998-12-31"], dimensions: [risk_rule]}
+
+  - id: L2-06
+    route: L2
+    question: 1998年反洗钱类风险事件涉及金额是多少？
+    gold_sql: >-
+      SELECT COALESCE(SUM(amount), 0) FROM dwd_risk_event
+      WHERE risk_category = 'AML' AND event_date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [risk_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"], filters: {risk_category: ["AML"]}}
+    alt_irs:
+      - {metrics: [risk_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"], filters: {risk_rule: ["LARGE_CASH", "RAPID_IN_OUT"]}}
+
+  - id: L2-07
+    route: L2
+    question: 1998年快进快出事件最多的5个区县
+    gold_sql: >-
+      SELECT d.A2 FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE e.rule_code = 'RAPID_IN_OUT' AND e.event_date BETWEEN '1998-01-01' AND '1998-12-31'
+      GROUP BY d.A2 ORDER BY COUNT(*) DESC LIMIT 5
+    gold_ir: {metrics: [risk_event_cnt], query_type: breakdown, time_range: ["1998-01-01", "1998-12-31"], dimensions: [district_name], filters: {risk_rule: ["RAPID_IN_OUT"]}, order: desc, limit: 5}
+
+  - id: L2-08
+    route: L2
+    question: 各卡等级的发卡量是多少？
+    gold_sql: SELECT type, COUNT(*) FROM card GROUP BY type
+    gold_ir: {metrics: [card_issued_cnt], query_type: breakdown, dimensions: [card_type]}
+
+  - id: L2-09
+    route: L2
+    question: 97年按月出账单的账户交易金额一共多少？
+    gold_sql: >-
+      SELECT COALESCE(SUM(t.amount), 0) FROM trans t JOIN account a ON a.account_id = t.account_id
+      WHERE a.frequency = 'POPLATEK MESICNE' AND t.date BETWEEN '1997-01-01' AND '1997-12-31'
+    gold_ir: {metrics: [trans_amt], query_type: point, time_range: ["1997-01-01", "1997-12-31"], filters: {account_frequency: ["POPLATEK MESICNE"]}}
+
+  - id: L2-10
+    route: L2
+    question: 男性和女性账户所有人的不良贷款笔数分别是多少？
+    gold_sql: >-
+      SELECT c.gender, COUNT(*) FROM loan l
+      JOIN disp dp ON dp.account_id = l.account_id AND dp.type = 'OWNER'
+      JOIN client c ON c.client_id = dp.client_id
+      WHERE l.status IN ('B', 'D') GROUP BY c.gender
+    gold_ir: {metrics: [bad_loan_cnt], query_type: breakdown, dimensions: [owner_gender]}
+    alt_irs:
+      - {metrics: [loan_cnt], query_type: breakdown, dimensions: [owner_gender], filters: {loan_status: ["B", "D"]}}
+
+  - id: L2-11
+    route: L2
+    question: 1998年上半年每月的现金取现笔数
+    gold_sql: >-
+      SELECT strftime('%Y-%m', date) AS m, COUNT(*) FROM trans
+      WHERE operation = 'VYBER' AND date BETWEEN '1998-01-01' AND '1998-06-30' GROUP BY m
+    gold_ir: {metrics: [cash_withdraw_cnt], query_type: trend, grain: month, time_range: ["1998-01-01", "1998-06-30"]}
+
+  - id: L2-12
+    route: L2
+    question: 1996年各季度的活跃账户数
+    gold_sql: >-
+      SELECT strftime('%Y', date) || '-Q' || ((CAST(strftime('%m', date) AS INTEGER) + 2) / 3) AS q,
+             COUNT(DISTINCT account_id)
+      FROM trans WHERE date BETWEEN '1996-01-01' AND '1996-12-31' GROUP BY q
+    gold_ir: {metrics: [active_account_cnt], query_type: trend, grain: quarter, time_range: ["1996-01-01", "1996-12-31"]}
+
+  - id: L2-13
+    route: L2
+    question: 1998年笔均交易金额是多少？
+    gold_sql: SELECT SUM(amount) * 1.0 / COUNT(*) FROM trans WHERE date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [avg_trans_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"]}
+
+  - id: L2-14
+    route: L2
+    question: 1997年12月有多少笔透支罚息交易？
+    gold_sql: SELECT COUNT(*) FROM trans WHERE k_symbol = 'SANKC. UROK' AND date BETWEEN '1997-12-01' AND '1997-12-31'
+    gold_ir: {metrics: [trans_cnt], query_type: point, time_range: ["1997-12-01", "1997-12-31"], filters: {trans_purpose: ["SANKC. UROK"]}}
+    alt_irs:
+      - {metrics: [risk_event_cnt], query_type: point, time_range: ["1997-12-01", "1997-12-31"], filters: {risk_rule: ["OVERDRAFT_PENALTY"]}}
+
+  - id: L2-15
+    route: L2
+    question: 1998年各地区的现金取现金额，从高到低排列
+    gold_sql: >-
+      SELECT d.A3, SUM(t.amount) AS s FROM trans t
+      JOIN account a ON a.account_id = t.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE t.operation = 'VYBER' AND t.date BETWEEN '1998-01-01' AND '1998-12-31'
+      GROUP BY d.A3 ORDER BY s DESC
+    order_matters: true
+    gold_ir: {metrics: [cash_withdraw_amt], query_type: breakdown, time_range: ["1998-01-01", "1998-12-31"], dimensions: [region], order: desc}
+
+  - id: L2-16
+    route: L2
+    question: 1995年5年期贷款的放款金额
+    gold_sql: SELECT COALESCE(SUM(amount), 0) FROM loan WHERE duration = 60 AND date BETWEEN '1995-01-01' AND '1995-12-31'
+    gold_ir: {metrics: [loan_amt], query_type: point, time_range: ["1995-01-01", "1995-12-31"], filters: {loan_term: [60]}}
+
+  - id: L2-17
+    route: L2
+    question: 各贷款状态的贷款笔数分布
+    gold_sql: SELECT status, COUNT(*) FROM loan GROUP BY status
+    gold_ir: {metrics: [loan_cnt], query_type: breakdown, dimensions: [loan_status]}
+
+  - id: L2-18
+    route: L2
+    question: 1998年12月1日到12月15日的交易金额
+    gold_sql: SELECT COALESCE(SUM(amount), 0) FROM trans WHERE date BETWEEN '1998-12-01' AND '1998-12-15'
+    gold_ir: {metrics: [trans_amt], query_type: point, time_range: ["1998-12-01", "1998-12-15"]}
+
+  - id: L2-19
+    route: L2
+    question: 1998年风险事件数按月份和风险大类的分布
+    gold_sql: >-
+      SELECT strftime('%Y-%m', event_date) AS m, risk_category, COUNT(*) FROM dwd_risk_event
+      WHERE event_date BETWEEN '1998-01-01' AND '1998-12-31' GROUP BY m, risk_category
+    gold_ir: {metrics: [risk_event_cnt], query_type: trend, grain: month, time_range: ["1998-01-01", "1998-12-31"], dimensions: [risk_category]}
+
+  - id: L2-20
+    route: L2
+    question: 1997年他行转入金额同比增长了多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN date BETWEEN '1997-01-01' AND '1997-12-31' THEN amount ELSE 0 END),
+             SUM(CASE WHEN date BETWEEN '1996-01-01' AND '1996-12-31' THEN amount ELSE 0 END)
+      FROM trans WHERE operation = 'PREVOD Z UCTU'
+    gold_ir: {metrics: [trans_amt], query_type: compare, compare: yoy, time_range: ["1997-01-01", "1997-12-31"], filters: {trans_operation: ["PREVOD Z UCTU"]}}
+    alt_irs:
+      - {metrics: [credit_amt], query_type: compare, compare: yoy, time_range: ["1997-01-01", "1997-12-31"], filters: {trans_operation: ["PREVOD Z UCTU"]}}
+
+  - id: L2-21
+    route: L2
+    question: 北摩拉维亚1998年的活跃账户数
+    gold_sql: >-
+      SELECT COUNT(DISTINCT t.account_id) FROM trans t
+      JOIN account a ON a.account_id = t.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE d.A3 = 'north Moravia' AND t.date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [active_account_cnt], query_type: point, time_range: ["1998-01-01", "1998-12-31"], filters: {region: ["north Moravia"]}}
+
+  - id: L2-22
+    route: L2
+    question: 1996年发了多少张金卡？
+    gold_sql: SELECT COUNT(*) FROM card WHERE type = 'gold' AND issued BETWEEN '1996-01-01' AND '1996-12-31'
+    gold_ir: {metrics: [card_issued_cnt], query_type: point, time_range: ["1996-01-01", "1996-12-31"], filters: {card_type: ["gold"]}}
+
+  - id: L2-23
+    route: L2
+    question: 1997年各贷款期限的不良率
+    gold_sql: >-
+      SELECT duration, SUM(CASE WHEN status IN ('B', 'D') THEN 1 ELSE 0 END) * 1.0 / COUNT(*) FROM loan
+      WHERE date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY duration
+    gold_ir: {metrics: [bad_loan_rate], query_type: breakdown, time_range: ["1997-01-01", "1997-12-31"], dimensions: [loan_term]}
+
+  - id: L2-24
+    route: L2
+    question: 1998年第二季度养老金的入账金额
+    gold_sql: >-
+      SELECT COALESCE(SUM(amount), 0) FROM trans
+      WHERE type = 'PRIJEM' AND k_symbol = 'DUCHOD' AND date BETWEEN '1998-04-01' AND '1998-06-30'
+    gold_ir: {metrics: [credit_amt], query_type: point, time_range: ["1998-04-01", "1998-06-30"], filters: {trans_purpose: ["DUCHOD"]}}
+    alt_irs:
+      - {metrics: [trans_amt], query_type: point, time_range: ["1998-04-01", "1998-06-30"], filters: {trans_purpose: ["DUCHOD"]}}
+
+  - id: L2-25
+    route: L2
+    question: 各账单频率的账户开户数
+    gold_sql: SELECT frequency, COUNT(*) FROM account GROUP BY frequency
+    gold_ir: {metrics: [new_account_cnt], query_type: breakdown, dimensions: [account_frequency]}
+
+  - id: L2-26
+    route: L2
+    question: 1997年保险费支出总额是多少？
+    gold_sql: >-
+      SELECT COALESCE(SUM(amount), 0) FROM trans
+      WHERE type IN ('VYDAJ', 'VYBER') AND k_symbol = 'POJISTNE' AND date BETWEEN '1997-01-01' AND '1997-12-31'
+    gold_ir: {metrics: [debit_amt], query_type: point, time_range: ["1997-01-01", "1997-12-31"], filters: {trans_purpose: ["POJISTNE"]}}
+    alt_irs:
+      - {metrics: [trans_amt], query_type: point, time_range: ["1997-01-01", "1997-12-31"], filters: {trans_purpose: ["POJISTNE"]}}
+
+  - id: L2-27
+    route: L2
+    question: 1998年风险涉及金额最高的3个区县
+    gold_sql: >-
+      SELECT d.A2 FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE e.event_date BETWEEN '1998-01-01' AND '1998-12-31' GROUP BY d.A2 ORDER BY SUM(e.amount) DESC LIMIT 3
+    gold_ir: {metrics: [risk_amt], query_type: breakdown, time_range: ["1998-01-01", "1998-12-31"], dimensions: [district_name], order: desc, limit: 3}
+
+  - id: L2-28
+    route: L2
+    question: 1998年8月信用卡取现的笔数和金额
+    gold_sql: >-
+      SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM trans
+      WHERE operation = 'VYBER KARTOU' AND date BETWEEN '1998-08-01' AND '1998-08-31'
+    gold_ir: {metrics: [trans_cnt, trans_amt], query_type: point, time_range: ["1998-08-01", "1998-08-31"], filters: {trans_operation: ["VYBER KARTOU"]}}
+
+  - id: L2-29
+    route: L2
+    question: 近半年每月的入账金额趋势
+    gold_sql: >-
+      SELECT strftime('%Y-%m', date) AS m, SUM(amount) FROM trans
+      WHERE type = 'PRIJEM' AND date BETWEEN '1998-07-01' AND '1998-12-31' GROUP BY m
+    gold_ir: {metrics: [credit_amt], query_type: trend, grain: month, time_range: ["1998-07-01", "1998-12-31"]}
+
+  - id: L2-30
+    route: L2
+    question: 1998年大额现金取现事件涉及多少个账户？
+    gold_sql: >-
+      SELECT COUNT(DISTINCT account_id) FROM dwd_risk_event
+      WHERE rule_code = 'LARGE_CASH' AND event_date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [risk_account_cnt], query_type: point, time_range: ["1998-01-01", "1998-12-31"], filters: {risk_rule: ["LARGE_CASH"]}}
+
+  - id: L2-31
+    route: L2
+    question: 1998年12月每天的交易笔数
+    gold_sql: SELECT date, COUNT(*) FROM trans WHERE date BETWEEN '1998-12-01' AND '1998-12-31' GROUP BY date
+    gold_ir: {metrics: [trans_cnt], query_type: trend, grain: day, time_range: ["1998-12-01", "1998-12-31"]}
+
+  - id: L2-32
+    route: L2
+    question: 女性户主的账户1998年现金取现金额是多少？
+    gold_sql: >-
+      SELECT COALESCE(SUM(t.amount), 0) FROM trans t
+      JOIN disp dp ON dp.account_id = t.account_id AND dp.type = 'OWNER'
+      JOIN client c ON c.client_id = dp.client_id
+      WHERE c.gender = 'F' AND t.operation = 'VYBER' AND t.date BETWEEN '1998-01-01' AND '1998-12-31'
+    gold_ir: {metrics: [cash_withdraw_amt], query_type: point, time_range: ["1998-01-01", "1998-12-31"], filters: {owner_gender: ["F"]}}
+
+  - id: L2-33
+    route: L2
+    question: 1997年风险事件最多的区县是哪个？
+    gold_sql: >-
+      SELECT d.A2 FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE e.event_date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY d.A2 ORDER BY COUNT(*) DESC LIMIT 1
+    gold_ir: {metrics: [risk_event_cnt], query_type: breakdown, time_range: ["1997-01-01", "1997-12-31"], dimensions: [district_name], order: desc, limit: 1}
+
+  - id: L2-34
+    route: L2
+    question: 1996年到1998年每年的发卡量
+    gold_sql: >-
+      SELECT strftime('%Y', issued) AS y, COUNT(*) FROM card
+      WHERE issued BETWEEN '1996-01-01' AND '1998-12-31' GROUP BY y
+    gold_ir: {metrics: [card_issued_cnt], query_type: trend, grain: year, time_range: ["1996-01-01", "1998-12-31"]}
+
+  - id: L2-35
+    route: L2
+    question: 1998年11月现金取现金额环比变化多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN date BETWEEN '1998-11-01' AND '1998-11-30' THEN amount ELSE 0 END),
+             SUM(CASE WHEN date BETWEEN '1998-10-01' AND '1998-10-31' THEN amount ELSE 0 END)
+      FROM trans WHERE operation = 'VYBER'
+    gold_ir: {metrics: [cash_withdraw_amt], query_type: compare, compare: mom, time_range: ["1998-11-01", "1998-11-30"]}
+
+  # ------------------------------------------------------------------ L3：生成式 SQL
+  - id: L3-01
+    route: L3
+    question: 1998年交易笔数最多的10个账户是哪些？
+    gold_sql: >-
+      SELECT account_id FROM trans WHERE date BETWEEN '1998-01-01' AND '1998-12-31'
+      GROUP BY account_id ORDER BY COUNT(*) DESC LIMIT 10
+
+  - id: L3-02
+    route: L3
+    question: 平均工资最高的区县是哪个？该区县有多少个账户？
+    gold_sql: >-
+      SELECT d.A2, COUNT(a.account_id) FROM district d JOIN account a ON a.district_id = d.district_id
+      WHERE d.A11 = (SELECT MAX(A11) FROM district) GROUP BY d.A2
+
+  - id: L3-03
+    route: L3
+    question: 1996年犯罪数最多的区县，1998年发生了多少起风险事件？
+    gold_sql: >-
+      SELECT COUNT(*) FROM dwd_risk_event
+      WHERE district_id = (SELECT district_id FROM district ORDER BY A16 DESC LIMIT 1)
+        AND event_date BETWEEN '1998-01-01' AND '1998-12-31'
+
+  - id: L3-04
+    route: L3
+    question: 既发生过风险事件又有不良贷款的账户有多少个？
+    gold_sql: >-
+      SELECT COUNT(DISTINCT e.account_id) FROM dwd_risk_event e JOIN loan l ON l.account_id = e.account_id
+      WHERE l.status IN ('B', 'D')
+
+  - id: L3-05
+    route: L3
+    question: 金卡持卡人中男性占比是多少？
+    gold_sql: >-
+      SELECT SUM(CASE WHEN c.gender = 'M' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) FROM card k
+      JOIN disp dp ON dp.disp_id = k.disp_id JOIN client c ON c.client_id = dp.client_id
+      WHERE k.type = 'gold'
+
+  - id: L3-06
+    route: L3
+    question: 各地区不良贷款金额占该地区放款金额的比例是多少？
+    gold_sql: >-
+      SELECT d.A3, SUM(CASE WHEN l.status IN ('B', 'D') THEN l.amount ELSE 0 END) * 1.0 / SUM(l.amount)
+      FROM loan l JOIN account a ON a.account_id = l.account_id JOIN district d ON d.district_id = a.district_id
+      GROUP BY d.A3
+
+  - id: L3-07
+    route: L3
+    question: 从开户到放款平均间隔多少天？
+    gold_sql: SELECT AVG(julianday(l.date) - julianday(a.date)) FROM loan l JOIN account a ON a.account_id = l.account_id
+
+  - id: L3-08
+    route: L3
+    question: 1998年出现过负余额的账户有多少个？
+    gold_sql: SELECT COUNT(DISTINCT account_id) FROM trans WHERE balance < 0 AND date BETWEEN '1998-01-01' AND '1998-12-31'
+
+  - id: L3-09
+    route: L3
+    question: 账户所有人在1970年及以后出生的贷款有多少笔？
+    gold_sql: >-
+      SELECT COUNT(*) FROM loan l
+      JOIN disp dp ON dp.account_id = l.account_id AND dp.type = 'OWNER'
+      JOIN client c ON c.client_id = dp.client_id
+      WHERE c.birth_date >= '1970-01-01'
+
+  - id: L3-10
+    route: L3
+    question: 代扣指令中用途为保险费的总金额是多少？
+    gold_sql: SELECT SUM(amount) FROM "order" WHERE k_symbol = 'POJISTNE'
+
+  - id: L3-11
+    route: L3
+    question: 月还款额超过5000且处于履约中欠款状态的贷款有多少笔？
+    gold_sql: SELECT COUNT(*) FROM loan WHERE payments > 5000 AND status = 'D'
+
+  - id: L3-12
+    route: L3
+    question: 1997年金额最大的一笔交易发生在哪个区县？
+    gold_sql: >-
+      SELECT d.A2 FROM trans t JOIN account a ON a.account_id = t.account_id
+      JOIN district d ON d.district_id = a.district_id
+      WHERE t.date BETWEEN '1997-01-01' AND '1997-12-31' ORDER BY t.amount DESC LIMIT 1
+
+  - id: L3-13
+    route: L3
+    question: 1998年快进快出事件超过10次的账户有多少个？
+    gold_sql: >-
+      SELECT COUNT(*) FROM (
+        SELECT account_id FROM dwd_risk_event
+        WHERE rule_code = 'RAPID_IN_OUT' AND event_date BETWEEN '1998-01-01' AND '1998-12-31'
+        GROUP BY account_id HAVING COUNT(*) > 10)
+
+  - id: L3-14
+    route: L3
+    question: 1996年失业率高于5%的区县，1998年风险事件总数是多少？
+    gold_sql: >-
+      SELECT COUNT(*) FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+      WHERE d.A13 > 5 AND e.event_date BETWEEN '1998-01-01' AND '1998-12-31'
+
+  - id: L3-15
+    route: L3
+    question: 1998年各地区每万人风险事件数是多少？
+    gold_sql: >-
+      WITH ev AS (
+        SELECT d.A3 AS region, COUNT(*) AS n FROM dwd_risk_event e JOIN district d ON d.district_id = e.district_id
+        WHERE e.event_date BETWEEN '1998-01-01' AND '1998-12-31' GROUP BY d.A3),
+      pop AS (SELECT A3 AS region, SUM(CAST(A4 AS INTEGER)) AS p FROM district GROUP BY A3)
+      SELECT ev.region, ev.n * 10000.0 / pop.p FROM ev JOIN pop ON pop.region = ev.region
+
+  - id: L3-16
+    route: L3
+    question: 从未发生过风险事件的账户有多少个？
+    gold_sql: SELECT COUNT(*) FROM account WHERE account_id NOT IN (SELECT account_id FROM dwd_risk_event)
+
+  - id: L3-17
+    route: L3
+    question: 有授权使用人的账户有多少个？
+    gold_sql: SELECT COUNT(DISTINCT account_id) FROM disp WHERE type = 'DISPONENT'
+
+  - id: L3-18
+    route: L3
+    question: 1997年2月至12月，每月现金取现金额相对上月的增长率是多少？
+    gold_sql: >-
+      WITH m AS (
+        SELECT strftime('%Y-%m', date) AS m, SUM(amount) AS s FROM trans
+        WHERE operation = 'VYBER' AND date BETWEEN '1997-01-01' AND '1997-12-31' GROUP BY m),
+      g AS (SELECT m, (s - LAG(s) OVER (ORDER BY m)) * 1.0 / LAG(s) OVER (ORDER BY m) AS growth FROM m)
+      SELECT m, growth FROM g WHERE m >= '1997-02'
+
+  - id: L3-19
+    route: L3
+    question: 贷款金额最高的5笔贷款分别属于哪个地区？
+    gold_sql: >-
+      SELECT d.A3 FROM loan l JOIN account a ON a.account_id = l.account_id
+      JOIN district d ON d.district_id = a.district_id ORDER BY l.amount DESC LIMIT 5
+
+  - id: L3-20
+    route: L3
+    question: 设置了贷款还款代扣指令的账户中，有不良贷款的账户有多少个？
+    gold_sql: >-
+      SELECT COUNT(DISTINCT o.account_id) FROM "order" o JOIN loan l ON l.account_id = o.account_id
+      WHERE o.k_symbol = 'UVER' AND l.status IN ('B', 'D')
+
+  - id: L3-21
+    route: L3
+    question: 1998年各地区单笔1万及以上的现金取现交易，平均金额是多少？
+    gold_sql: >-
+      SELECT d.A3, AVG(t.amount) FROM trans t
+      JOIN account a ON a.account_id = t.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE t.operation = 'VYBER' AND t.amount >= 10000 AND t.date BETWEEN '1998-01-01' AND '1998-12-31'
+      GROUP BY d.A3
+
+  - id: L3-22
+    route: L3
+    question: 城镇人口比例超过60%的区县，1995年放款笔数合计多少？
+    gold_sql: >-
+      SELECT COUNT(*) FROM loan l
+      JOIN account a ON a.account_id = l.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE d.A10 > 60 AND l.date BETWEEN '1995-01-01' AND '1995-12-31'
+
+  - id: L3-23
+    route: L3
+    question: 同时有信用卡和贷款的账户有多少个？
+    gold_sql: >-
+      SELECT COUNT(DISTINCT dp.account_id) FROM card k JOIN disp dp ON dp.disp_id = k.disp_id
+      WHERE dp.account_id IN (SELECT account_id FROM loan)
+
+  - id: L3-24
+    route: L3
+    question: 1998年发生过大额现金取现的账户，当年出账总金额是多少？
+    gold_sql: >-
+      SELECT SUM(amount) FROM trans
+      WHERE type IN ('VYDAJ', 'VYBER') AND date BETWEEN '1998-01-01' AND '1998-12-31'
+        AND account_id IN (
+          SELECT account_id FROM dwd_risk_event
+          WHERE rule_code = 'LARGE_CASH' AND event_date BETWEEN '1998-01-01' AND '1998-12-31')
+
+  - id: L3-25
+    route: L3
+    question: 各卡等级持卡账户的平均贷款金额是多少？
+    gold_sql: >-
+      SELECT k.type, AVG(l.amount) FROM card k JOIN disp dp ON dp.disp_id = k.disp_id
+      JOIN loan l ON l.account_id = dp.account_id GROUP BY k.type
+
+  - id: L3-26
+    route: L3
+    question: 1996年有利息入账的账户，平均每户收到几次利息？
+    gold_sql: >-
+      SELECT COUNT(*) * 1.0 / COUNT(DISTINCT account_id) FROM trans
+      WHERE k_symbol = 'UROK' AND date BETWEEN '1996-01-01' AND '1996-12-31'
+
+  - id: L3-27
+    route: L3
+    question: 透支罚息总额最高的账户在哪个地区开户？
+    gold_sql: >-
+      SELECT d.A3 FROM trans t
+      JOIN account a ON a.account_id = t.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE t.k_symbol = 'SANKC. UROK' GROUP BY t.account_id, d.A3 ORDER BY SUM(t.amount) DESC LIMIT 1
+
+  - id: L3-28
+    route: L3
+    question: 1997年放款的贷款中，期限最长的贷款里金额最大的是哪一笔（贷款ID）？
+    gold_sql: >-
+      SELECT loan_id FROM loan WHERE date BETWEEN '1997-01-01' AND '1997-12-31'
+      ORDER BY duration DESC, amount DESC LIMIT 1
+
+  - id: L3-29
+    route: L3
+    question: 1998年12月各地区现金存入减去现金取现的净额是多少？
+    gold_sql: >-
+      SELECT d.A3, SUM(CASE WHEN t.operation = 'VKLAD' THEN t.amount
+                            WHEN t.operation = 'VYBER' THEN -t.amount ELSE 0 END)
+      FROM trans t JOIN account a ON a.account_id = t.account_id JOIN district d ON d.district_id = a.district_id
+      WHERE t.date BETWEEN '1998-12-01' AND '1998-12-31' GROUP BY d.A3
+
+  - id: L3-30
+    route: L3
+    question: 1993年开户的账户中，有贷款的比例是多少？
+    gold_sql: >-
+      SELECT COUNT(DISTINCT l.account_id) * 1.0 / COUNT(DISTINCT a.account_id)
+      FROM account a LEFT JOIN loan l ON l.account_id = a.account_id
+      WHERE a.date BETWEEN '1993-01-01' AND '1993-12-31'
+
+  # ------------------------------------------------------------------ CLARIFY：多义或缺失
+  - {id: C-01, route: CLARIFY, question: 上个月的损失有多少？, clarify_candidates: [bad_loan_amt, risk_amt]}
+  - {id: C-02, route: CLARIFY, question: 1997年的交易量是多少？, clarify_candidates: [trans_cnt, trans_amt]}
+  - {id: C-03, route: CLARIFY, question: 各地区的账户数, clarify_candidates: [new_account_cnt, active_account_cnt, risk_account_cnt]}
+  - {id: C-04, route: CLARIFY, question: 今年贷款规模怎么样？, clarify_candidates: [loan_cnt, loan_amt]}
+  - {id: C-05, route: CLARIFY, question: 最近的风险情况如何？, clarify_candidates: [risk_event_cnt, risk_account_cnt, risk_amt]}
+  - {id: C-06, route: CLARIFY, question: 帮我看一下1998年的数据, clarify_candidates: []}
+  - {id: C-07, route: CLARIFY, question: 各地区的情况对比一下, clarify_candidates: []}
+  - {id: C-08, route: CLARIFY, question: 1997年南摩拉维亚的损失, clarify_candidates: [bad_loan_amt, risk_amt]}
+  - {id: C-09, route: CLARIFY, question: 上季度交易量同比怎么样？, clarify_candidates: [trans_cnt, trans_amt]}
+  - {id: C-10, route: CLARIFY, question: 查一下那个指标, clarify_candidates: []}
+
+  # ------------------------------------------------------------------ OOD：域外问题
+  - {id: O-01, route: OOD, question: 今天天气怎么样？}
+  - {id: O-02, route: OOD, question: 帮我写一首关于秋天的诗}
+  - {id: O-03, route: OOD, question: 如何申请一张信用卡？}
+  - {id: O-04, route: OOD, question: 你能帮我预测明年的股票走势吗？}
+  - {id: O-05, route: OOD, question: Python 里怎么读取 CSV 文件？}
+
+  # ------------------------------------------------------------------ META：口径与数据资产问答
+  - {id: M-01, route: META, question: 不良率是怎么计算的？, meta_target: "metric:bad_loan_rate"}
+  - {id: M-02, route: META, question: 风险事件数的口径是什么？, meta_target: "metric:risk_event_cnt"}
+  - {id: M-03, route: META, question: 快进快出规则是什么意思？, meta_target: "dimension:risk_rule"}
+  - {id: M-04, route: META, question: 哪张表记录了交易对手的信息？, meta_target: "table:trans"}
+  - {id: M-05, route: META, question: 出账金额包含哪些交易类型？, meta_target: "metric:debit_amt"}
