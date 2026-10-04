@@ -11,8 +11,8 @@ RAPID_IN_OUT       credit >= 30,000 followed, within the same day and the next 2
 OVERDRAFT_PENALTY  sanction interest posted because the balance was negative
                    (k_symbol = 'SANKC. UROK')
 
-The ADS layer (ads_okr_monthly) is materialized from the semantic layer by
-scripts/materialize_okr.py so that its numbers share one definition with layer 2.
+The ADS layer (ads_okr_monthly) is then materialized from the semantic layer with the
+layer-2 compiler (text2sql.semantic.materialize), so its numbers share one definition with layer 2.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ import shutil
 import sqlite3
 
 from text2sql.config import BIRD_DB_PATH, RISK_DB_PATH
+from text2sql.semantic.materialize import materialize_okr
+from text2sql.semantic.registry import load_semantic_model
 
 LARGE_CASH_MIN = 50_000
 RAPID_IN_MIN = 30_000
@@ -114,6 +116,8 @@ def build() -> None:
     print(f"built {RISK_DB_PATH}")
     for rule_code, events, accounts, amount in rows:
         print(f"  {rule_code:<18} events={events:>6} accounts={accounts:>5} amount={amount:>12,}")
+    n = materialize_okr(RISK_DB_PATH, load_semantic_model())
+    print(f"  ads_okr_monthly    rows={n}")
 
 
 if __name__ == "__main__":

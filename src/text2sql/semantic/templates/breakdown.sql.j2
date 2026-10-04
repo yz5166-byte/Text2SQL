@@ -1,0 +1,8 @@
+{#- Breakdown: one row per dimension value; ranked questions sort by the value and keep the top N. -#}
+SELECT {{ select | join(', ') }}
+{% include "_from.sql.j2" %}
+GROUP BY {{ group_by | join(', ') }}
+ORDER BY {{ order_by | join(', ') }}
+{% if limit %}
+LIMIT {{ limit }}
+{% endif %}

@@ -28,7 +28,7 @@ metrics:
     time_column: trans.date
     agg: sum
     column: trans.amount
-    unit: 元
+    unit: 克朗
     description: 统计期内全部交易金额之和，入账与出账均按正数累加，反映资金流动规模。
 
   credit_amt:
@@ -40,7 +40,7 @@ metrics:
     agg: sum
     column: trans.amount
     filters: ["trans.type = 'PRIJEM'"]
-    unit: 元
+    unit: 克朗
     description: 资金方向为入账（type = 'PRIJEM'）的交易金额之和，含利息入账。
 
   debit_amt:
@@ -52,7 +52,7 @@ metrics:
     agg: sum
     column: trans.amount
     filters: ["trans.type IN ('VYDAJ', 'VYBER')"]
-    unit: 元
+    unit: 克朗
     description: 资金方向为出账的交易金额之和。出账编码包含 VYDAJ 与 VYBER，后者未列于原始文档但真实存在。
 
   cash_withdraw_amt:
@@ -64,7 +64,7 @@ metrics:
     agg: sum
     column: trans.amount
     filters: ["trans.operation = 'VYBER'"]
-    unit: 元
+    unit: 克朗
     description: 交易方式为现金取现（operation = 'VYBER'）的金额之和，不含信用卡取现。
 
   cash_withdraw_cnt:
@@ -98,7 +98,7 @@ metrics:
     agg: ratio
     numerator: trans_amt
     denominator: trans_cnt
-    unit: 元
+    unit: 克朗
     description: 交易金额除以交易笔数。
 
   new_account_cnt:
@@ -142,7 +142,7 @@ metrics:
     agg: sum
     column: loan.amount
     okr: true
-    unit: 元
+    unit: 克朗
     description: 统计期内放款日期落在期内的贷款本金之和。
 
   bad_loan_cnt:
@@ -167,7 +167,7 @@ metrics:
     column: loan.amount
     filters: ["loan.status IN ('B', 'D')"]
     okr: true
-    unit: 元
+    unit: 克朗
     description: 不良贷款（status 为 B 或 D）的放款本金之和，按放款日期归属（vintage 口径）。
 
   bad_loan_rate:
@@ -215,7 +215,7 @@ metrics:
     agg: sum
     column: dwd_risk_event.amount
     okr: true
-    unit: 元
+    unit: 克朗
     description: 风险事件触发交易的金额之和。
 
 # 多义词：命中后不猜测，发起澄清，由用户在候选指标中选择。

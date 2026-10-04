@@ -1,0 +1,17 @@
+{#- Compare: the inner query aggregates the current and the baseline period; the outer query adds change and change rate. -#}
+SELECT {{ outer | join(', ') }}
+FROM (
+  SELECT {{ select | join(', ') }}
+{% filter indent(2, first=True) %}
+{% include "_from.sql.j2" %}
+{% endfilter %}
+{% if group_by %}
+  GROUP BY {{ group_by | join(', ') }}
+{% endif %}
+) AS cmp
+{% if order_by %}
+ORDER BY {{ order_by | join(', ') }}
+{% endif %}
+{% if limit %}
+LIMIT {{ limit }}
+{% endif %}

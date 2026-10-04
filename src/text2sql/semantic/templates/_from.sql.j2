@@ -1,0 +1,8 @@
+{#- Shared FROM / JOIN / WHERE block, included by every query template. -#}
+FROM {{ base }}
+{% for j in joins %}
+JOIN {{ j.physical_table }}{% if j.to != j.physical_table %} AS {{ j.to }}{% endif %} ON {{ j.condition }}
+{% endfor %}
+{% if where %}
+WHERE {{ where | join('\n  AND ') }}
+{% endif %}

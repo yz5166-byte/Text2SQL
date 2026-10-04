@@ -1,0 +1,5 @@
+{#- Trend: one row per time period, optionally split by dimensions, in time order. -#}
+SELECT {{ select | join(', ') }}
+{% include "_from.sql.j2" %}
+GROUP BY {{ group_by | join(', ') }}
+ORDER BY {{ order_by | join(', ') }}

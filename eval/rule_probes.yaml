@@ -1,0 +1,55 @@
+# 规则层专项探测集（不属于冻结评估集）
+# 用途：评估规则预判（口径问答、域外）的精确率与覆盖率。规则可以"不判定"而交给模型，
+# 不判定不算错误；规则一旦判定，就必须判对。
+# expect 取值：META 口径问答；OOD 域外；DATA 应进入取数流程（不应被规则判为口径问答或域外）
+
+probes:
+  # ---------------------------------------------------------------- 应判为口径问答
+  - {q: 不良率是怎么计算的？, expect: META}
+  - {q: 风险账户数指的是什么？, expect: META}
+  - {q: 出账金额包括哪些交易类型？, expect: META}
+  - {q: 快进快出规则的定义是什么？, expect: META}
+  - {q: 交易流水记录在哪张表？, expect: META}
+  - {q: 不良贷款的口径是什么？, expect: META}
+  - {q: 风险事件数是怎么统计的？, expect: META}
+  - {q: 活跃账户数的计算逻辑是什么？, expect: META}
+  - {q: 放款金额按什么日期归属？, expect: META}
+  - {q: 什么叫透支罚息？, expect: META}
+  - {q: 地区这个维度有哪些取值？, expect: META}
+  - {q: 新开户数和活跃账户数有什么区别？, expect: META}
+  - {q: 哪个字段记录了交易对手？, expect: META}
+  - {q: 风险涉及金额的含义, expect: META}
+  - {q: 不良率的计算公式, expect: META}
+  - {q: 账单频率指什么, expect: META}
+
+  # ---------------------------------------------------------------- 应进入取数流程
+  - {q: 按不良口径，1998年的放款笔数是多少？, expect: DATA}
+  - {q: 1998年出账金额是多少？, expect: DATA}
+  - {q: 定义为大额现金取现的事件1998年有几起？, expect: DATA}
+  - {q: 哪个地区的不良率最高？, expect: DATA}
+  - {q: 1997年各地区的风险事件数, expect: DATA}
+  - {q: 风险事件数的口径下，1998年按月趋势如何？, expect: DATA}
+  - {q: 1998年快进快出事件涉及多少账户？, expect: DATA}
+  - {q: 南摩拉维亚去年的不良贷款金额, expect: DATA}
+  - {q: 各区县排名前五的是哪些？, expect: DATA}
+  - {q: 上个月多少？, expect: DATA}
+  - {q: 1998年的情况统计一下, expect: DATA}
+  - {q: 趋势怎么样, expect: DATA}
+  - {q: 同比增长了多少？, expect: DATA}
+  - {q: 帮我查一下上季度的环比, expect: DATA}
+  - {q: 1998年12月的数据, expect: DATA}
+  - {q: 今年整体怎么样？, expect: DATA}
+
+  # ---------------------------------------------------------------- 应判为域外
+  - {q: 今天天气怎么样？, expect: OOD}
+  - {q: 帮我写一首关于秋天的诗, expect: OOD}
+  - {q: 如何申请一张信用卡？, expect: OOD}
+  - {q: 你能帮我预测明年的股票走势吗？, expect: OOD}
+  - {q: Python 里怎么读取 CSV 文件？, expect: OOD}
+  - {q: 你是谁？, expect: OOD}
+  - {q: 讲个笑话, expect: OOD}
+  - {q: 帮我订一张去上海的机票, expect: OOD}
+  - {q: 推荐几本数据分析的书, expect: OOD}
+  - {q: 银行的营业时间是几点？, expect: OOD}
+  - {q: 今天星期几？, expect: OOD}
+  - {q: 翻译一下 hello world, expect: OOD}

@@ -1,0 +1,3 @@
+{#- Point: one value per metric over the filtered rows. -#}
+SELECT {{ select | join(', ') }}
+{% include "_from.sql.j2" %}
