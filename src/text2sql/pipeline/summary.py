@@ -49,6 +49,10 @@ def summarize(llm: LLMClient | None, question: str, columns: list[str], rows: li
 
 
 def unsupported_numbers(text: str, question: str, rows: list[list[str]]) -> list[str]:
-    """Numbers in `text` found neither in the table cells nor in the question (thousands separators ignored)."""
-    allowed = {n.replace(",", "") for cell in [question, *(c for r in rows for c in r)] for n in NUMBER.findall(cell)}
-    return [n for n in NUMBER.findall(text) if n.replace(",", "") not in allowed]
+    """Numbers in `text` found neither in the table cells nor in the question, compared by value (06 equals 6)."""
+    allowed = {_value(n) for cell in [question, *(c for r in rows for c in r)] for n in NUMBER.findall(cell)}
+    return [n for n in NUMBER.findall(text) if _value(n) not in allowed]
+
+
+def _value(number: str) -> float:
+    return float(number.replace(",", ""))

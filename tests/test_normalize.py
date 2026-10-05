@@ -99,3 +99,23 @@ def test_baseline_outside_the_data_is_disclosed():
     d = fit_to_data_range(normalized("1993年放款金额同比", metrics=["loan_amt"], query_type="compare", compare="yoy"),
                           model)
     assert d.route == "L1" and "基期 1992-01-01 至 1992-12-31 不在数据范围内" in d.assumptions[-1]
+
+
+# ---------------------------------------------------------------- contradictions found in the M4-4 dev run
+def test_every_conditioned_metric_has_a_base_metric():
+    assert all(model.base_metric(k) for k, m in model.metrics.items() if m.filters)
+
+
+def test_metric_condition_contradicting_a_filter_is_clarified():
+    d = normalized("1997年信用卡取现的笔数和金额", metrics=["cash_withdraw_cnt", "cash_withdraw_amt"], query_type="point",
+                   time_text="1997年", filters=[{"dimension": "trans_operation", "values": ["信用卡取现"]}])
+    assert d.route == "CLARIFY" and d.clarify_kind == "metric" and d.clarify_options == ["trans_cnt", "trans_amt"]
+    d = normalized("1997年南摩拉维亚现金取现笔数", metrics=["cash_withdraw_cnt"], query_type="point", time_text="1997年",
+                   filters=[{"dimension": "region", "values": ["南摩拉维亚"]}])
+    assert d.route == "L2"  # a filter on another column is no contradiction
+
+
+def test_period_by_period_comparison_goes_to_layer3():
+    d = normalized("1997年各月现金取现金额环比", metrics=["cash_withdraw_amt"], query_type="compare", compare="mom",
+                   time_text="1997年")
+    assert d.route == "L3" and "逐期对比" in d.reason

@@ -13,9 +13,11 @@ from text2sql.llm.base import LLMClient, LLMError, Usage
 from text2sql.pipeline import answer as ans
 from text2sql.pipeline.meta import answer_meta
 from text2sql.pipeline.decision import RouteDecision
+from text2sql.pipeline.layer3 import GenerativeSQL, L3Result
 from text2sql.pipeline.router import Router
 from text2sql.pipeline.semantic import run_queries
 from text2sql.pipeline.summary import summarize
+from text2sql.pipeline.trace import TraceStep
 from text2sql.semantic.compiler import CompileError
 from text2sql.semantic.ir import QueryIR
 from text2sql.semantic.okr import compile_ir
@@ -28,26 +30,6 @@ OOD_TEXT = (
 )
 SUMMARY_NOTE = "首句总结由模型根据结果表生成，其中数字均已与结果表核对"
 TIME_HINT = f"请给出具体的时间范围，例如：1998年11月、1998年第三季度、1997年到1998年（数据范围 {DATA_START_DATE} 至 {DATA_END_DATE}）。"
-
-
-@dataclass
-class TraceStep:
-    name: str
-    detail: str
-    elapsed_ms: float
-
-
-@dataclass
-class L3Result:
-    ok: bool
-    sql: str | None
-    columns: list[str]
-    rows: list[tuple]
-    attempts: int
-    error: str | None
-    notes: list[str]
-    trace: list[TraceStep]
-    usage: Usage
 
 
 class Layer3(Protocol):
@@ -86,7 +68,8 @@ class Text2SQLAgent:
         self.llm = llm
         self.executor = SQLiteExecutor(db_path, max_rows=max_rows)
         self.router = Router(self.model, llm, use_fast_path=use_fast_path)
-        self.layer3 = layer3
+        # layer 3 needs a model; tests may inject their own
+        self.layer3 = layer3 if layer3 is not None else (GenerativeSQL(llm, self.model, self.executor) if llm else None)
 
     def ask(self, question: str) -> AgentResponse:
         t0 = time.perf_counter()
@@ -103,7 +86,8 @@ class Text2SQLAgent:
         resp.route, resp.source = decision.route, decision.source
         resp.assumptions = list(decision.assumptions)
         resp.ir = decision.ir.model_dump(mode="json") if decision.ir else None
-        resp.trace.append(TraceStep("route", f"{decision.route}（{decision.source}）：{decision.reason}",
+        parse_calls = f"；解析调用 {decision.usage.calls} 次" if decision.usage.calls else ""
+        resp.trace.append(TraceStep("route", f"{decision.route}（{decision.source}）：{decision.reason}{parse_calls}",
                                     (time.perf_counter() - step_t) * 1000))
 
         handler = {
@@ -160,9 +144,11 @@ class Text2SQLAgent:
             resp.answer = f"未能生成可执行的查询：{result.error}"
             return
         self._fill_table(resp, result.columns, result.rows)
-        lines = [f"共 {len(result.rows)} 行结果。" if result.rows else "查询结果为空。", "",
-                 f"路由：{ans.LAYER_ZH['L3']}（非标准口径，请结合 SQL 核对）", ans.data_note()]
-        lines += [f"说明：{n}" for n in result.notes]
+        first = f"共 {len(result.rows)} 行结果，见下表。" if result.rows else "查询结果为空。"
+        if len(result.rows) > 1:
+            first = self._summarize(question, resp) or first
+        lines = [first, "", f"路由：{ans.LAYER_ZH['L3']}（非标准口径，请结合 SQL 核对）", ans.data_note()]
+        lines += [f"说明：{n}" for n in [*result.notes, *resp.assumptions]]
         resp.answer = "\n".join(lines)
 
     def _meta(self, question: str, decision: RouteDecision, resp: AgentResponse) -> None:

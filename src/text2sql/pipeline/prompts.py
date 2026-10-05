@@ -128,7 +128,7 @@ def _build_parse_prompt(model: SemanticModel) -> str:
 6. 排名类问题（最多、最高、前 N 个）：query_type 为 breakdown，order 为 desc，limit 为正整数 N；"最多的是哪个"取 limit 为 1。
 7. status：依据上面已摘录的槽位判断，intent 为 data_query 时必填。
    covered：问题能完整表达为"指标 × 维度 × 时间 × 维度筛选"。
-   uncovered：需要上述指标以外的计算（自定义比率、人均、占比）、账户或客户等明细级排名、指标以外字段的条件（如金额阈值、余额、年龄、人口、工资）、多步推理；reason 说明哪一部分无法表达。
+   uncovered：需要上述指标以外的计算（自定义比率、人均、占比）、逐期计算的同比或环比（如每月相对上月的增长率）、账户或客户等明细级排名、指标以外字段的条件（如金额阈值、余额、年龄、人口、工资）、多步推理；reason 说明哪一部分无法表达。
    clarify：指标含义不明确或问题未给出任何可识别的指标；reason 说明需要用户明确什么。多义词：{ambiguous}。
 8. 参考日期：今天是 {REFERENCE_DATE.isoformat()}，数据范围为 1993-01-01 至 1998-12-31。
 

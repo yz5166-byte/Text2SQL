@@ -49,6 +49,10 @@ def test_every_number_must_come_from_the_table(text, unsupported):
     assert unsupported_numbers(text, "97年各大区的不良率", ROWS) == unsupported
 
 
+def test_numbers_are_compared_by_value():
+    assert unsupported_numbers("6月最高，为 23.080%", "q", [["1998-06", "23.08%"]]) == []
+
+
 def test_summary_falls_back_without_a_model_or_on_large_tables():
     assert summarize(None, "q", ["地区"], [["布拉格"]]).text is None
     rows = [[str(i)] for i in range(SUMMARY_MAX_ROWS + 1)]
@@ -68,6 +72,21 @@ def test_summary_with_a_computed_number_is_dropped():
     r = ask("97年各大区的不良率", BY_REGION_1997, "中波希米亚比布拉格高 23.08 个百分点，8 个地区中有 2 个为零。")
     assert r.answer.startswith("共 8 行结果，见下表。") and "首句总结" not in r.answer
     assert "不在结果表中" in r.trace[-1].detail and r.usage.calls == 2
+
+
+# ---------------------------------------------------------------- metadata answers
+@pytest.mark.parametrize("question, present, absent", [
+    ("哪张表记录了交易对手的信息？", ["trans.account", "trans.bank"], ["trans_id", "card"]),
+    ("交易流水记录在哪张表？", ["【交易流水表】trans"], ["相关数据表"]),
+    ("地区这个维度有哪些取值？", ["【地区】", "南摩拉维亚"], ["loan.duration"]),
+    ("账单频率指什么", ["【账单频率】", "按周出账单"], ["k_symbol"]),
+])
+def test_metadata_answers_name_tables_and_dimensions(question, present, absent):
+    from text2sql.pipeline.meta import answer_meta
+    from text2sql.semantic.registry import load_semantic_model
+
+    text = answer_meta(question, load_semantic_model())
+    assert all(p in text for p in present) and not any(a in text for a in absent)
 
 
 # ---------------------------------------------------------------- display

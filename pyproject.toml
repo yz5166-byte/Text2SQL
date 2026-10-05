@@ -37,3 +37,5 @@ packages = ["src/text2sql"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-m 'not slow'"
+markers = ["slow: executes every gold SQL against the databases (run with -m slow)"]

@@ -32,14 +32,15 @@ class ErrorKind(str, Enum):
     TIMEOUT = "timeout"
     NO_SUCH_TABLE = "no_such_table"
     READ_ONLY = "read_only"
-    GUARD = "guard"  # set by the layer-3 guard, before execution
-    EMPTY_RESULT = "empty_result"  # set by the layer-3 result check, after execution
+    GUARD = "guard"  # set by the layer-3 guard, before execution: a fixable generation error
+    NOT_QUERY = "not_query"  # set by the layer-3 guard: a write or other non-query statement
     OTHER = "other"
 
 
 # A rewrite cannot fix a table that the catalog declares but the database lacks
-# (infrastructure), nor a write attempt (policy). Every other failure gets another try.
-NOT_REPAIRABLE = {ErrorKind.NO_SUCH_TABLE, ErrorKind.READ_ONLY}
+# (infrastructure), nor a write or other non-query statement (policy: the request itself
+# asks for something the system does not do). Every other failure gets another try.
+NOT_REPAIRABLE = {ErrorKind.NO_SUCH_TABLE, ErrorKind.READ_ONLY, ErrorKind.NOT_QUERY}
 
 # (fragments of the SQLite message, kind); the first matching row wins.
 _SIGNATURES = [

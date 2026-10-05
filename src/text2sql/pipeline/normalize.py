@@ -5,13 +5,19 @@
    authoritative and the model's extraction only chooses among several. In an uncovered
    question a date may be a condition (a birth year), so only the model's extraction is used.
 3. Reachability and value linking, repairing a value filed under the wrong dimension.
-4. Defaults: each one is disclosed in the answer.
-5. Data range: applied to every IR, from the fast path as well, before anything is queried.
+4. Contradictions: a metric's own condition that excludes every value the user filters the
+   same column on (现金取现笔数 filtered to 信用卡取现) can only return 0, so it is clarified;
+   a comparison asked period by period (每月相对上月) is beyond one-period IR, so it goes to layer 3.
+5. Defaults: each one is disclosed in the answer.
+6. Data range: applied to every IR, from the fast path as well, before anything is queried.
 """
 
 from __future__ import annotations
 
 import re
+
+import sqlglot
+from sqlglot import exp
 
 from text2sql.config import DATA_END_DATE, DATA_START_DATE
 from text2sql.pipeline.decision import NO_TIME_NOTE, RouteDecision, semantic_layer
@@ -68,7 +74,17 @@ def normalize_parse(question: str, p: ParseResult, model: SemanticModel) -> Rout
             filters.setdefault(dim, [])
             filters[dim] += [c for c in link.codes if c not in filters[dim]]
 
+    conflicting = _conflicting_metrics(model, p.metrics, filters)
+    if conflicting:
+        names = "、".join(model.metrics[m].name for m in conflicting)
+        return RouteDecision("CLARIFY", "llm", f"指标“{names}”自带的条件与筛选条件矛盾，按字面查询结果必然为 0",
+                             parse=p, clarify_kind="metric",
+                             clarify_options=list(dict.fromkeys(model.base_metric(m) for m in conflicting)))
+
     qt = "breakdown" if p.query_type == "point" and p.dimensions else p.query_type
+    if qt == "compare" and _grain_word(question):
+        return RouteDecision("L3", "llm", "逐期对比（每期相对上一期）语义层不能表达，转生成式 SQL", parse=p,
+                             time_hint=time_range)
     grain = p.grain if qt == "trend" else None
     if qt == "trend" and grain is None:
         grain = _grain_word(question)
@@ -102,6 +118,31 @@ def _covered_period(question: str, time_text: str | None) -> tuple[Range | None,
     if len(chosen) == 1:
         return (chosen[0].start, chosen[0].end), None
     return None, "问题中有多个时间表达，无法确定统计哪一段"
+
+
+def _conflicting_metrics(model: SemanticModel, metrics: list[str], filters: dict[str, list]) -> list[str]:
+    """Metrics whose own condition on a column admits none of the codes the user filters that column on."""
+    wanted = {}
+    for dim, codes in filters.items():
+        alias, column = model.dimensions[dim].column.split(".")
+        wanted[f"{model.physical_table(alias)}.{column}"] = {str(c) for c in codes}
+    out = []
+    for key in metrics:
+        for condition in model.metrics[key].filters:
+            column, allowed = _condition_values(condition)
+            if column in wanted and not wanted[column] & allowed:
+                out.append(key)
+    return out
+
+
+def _condition_values(condition: str) -> tuple[str | None, set[str]]:
+    """Column and admitted values of "t.c = 'x'" or "t.c IN ('x', 'y')"; (None, empty) for anything else."""
+    tree = sqlglot.parse_one(condition, read="sqlite")
+    if isinstance(tree, exp.EQ) and isinstance(tree.left, exp.Column) and isinstance(tree.right, exp.Literal):
+        return f"{tree.left.table}.{tree.left.name}", {tree.right.this}
+    if isinstance(tree, exp.In) and isinstance(tree.this, exp.Column):
+        return f"{tree.this.table}.{tree.this.name}", {v.this for v in tree.expressions if isinstance(v, exp.Literal)}
+    return None, set()
 
 
 def _grain_word(question: str) -> Grain | None:

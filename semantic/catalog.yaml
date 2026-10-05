@@ -91,7 +91,7 @@ tables:
       trans_id: {type: INTEGER, name_zh: 交易ID, description: 主键}
       account_id: {type: INTEGER, name_zh: 账户ID, description: 关联 account.account_id}
       date: {type: DATE, name_zh: 交易日期, description: 格式 YYYY-MM-DD，范围 1993-01-01 至 1998-12-31}
-      type: {type: TEXT, name_zh: 资金方向, description: PRIJEM 入账；VYDAJ 出账；VYBER 现金取现（出账）, dimension: trans_direction}
+      type: {type: TEXT, name_zh: 资金方向, description: PRIJEM 入账；VYDAJ 出账；VYBER 也是出账（原始文档未列出的编码）。按交易方式统计现金取现应使用 operation = 'VYBER', dimension: trans_direction}
       operation: {type: TEXT, name_zh: 交易方式, description: VYBER KARTOU 信用卡取现；VKLAD 现金存入；PREVOD Z UCTU 他行转入；VYBER 现金取现；PREVOD NA UCET 转账至他行；NULL 为利息入账, dimension: trans_operation}
       amount: {type: INTEGER, name_zh: 交易金额, description: 恒为正数}
       balance: {type: INTEGER, name_zh: 交易后余额, description: 可为负数，负数表示透支}

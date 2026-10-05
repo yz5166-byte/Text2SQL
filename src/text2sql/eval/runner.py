@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 
@@ -35,6 +36,7 @@ def agent_predictor(agent: Text2SQLAgent) -> Predictor:
             error=r.error, latency_s=r.latency_s, llm_calls=r.usage.calls, input_tokens=r.usage.input_tokens,
             output_tokens=r.usage.output_tokens, attempts=r.attempts,
             clarify_candidates=[o["metric"] for o in r.clarify_options], answer=r.answer,
+            trace=[asdict(step) for step in r.trace],
         )
     return predict
 

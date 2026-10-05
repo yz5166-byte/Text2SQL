@@ -1,0 +1,91 @@
+# 第三层 SQL 示例库（少样本提示）
+#
+# 用途：生成 SQL 时按问题相似度取 3 个示例放入提示，示范 SQLite 写法与本库的口径习惯。
+# 约束：
+#   1. 与评估集不重复：每个问题与自建评估题的字符相似度低于 0.57，且不复刻任何 BIRD 题目的表与条件组合
+#      （tests/test_layer3.py 检查相似度）。
+#   2. 每条 SQL 都在 bank_risk.sqlite 上执行通过且结果非空（同一测试检查）。
+#   3. 覆盖第三层典型写法：分组取第一、阈值、自定义比率、子查询、日期推算、累计窗口、反连接、
+#      区县属性、分档、HAVING。
+
+examples:
+  - id: E01
+    question: 每个地区开户最早的账户是哪个？列出账户ID与开户日期
+    sql: |-
+      WITH ranked AS (
+        SELECT d.A3 AS region, a.account_id, a.date,
+               ROW_NUMBER() OVER (PARTITION BY d.A3 ORDER BY a.date, a.account_id) AS rn
+        FROM account a JOIN district d ON d.district_id = a.district_id
+      )
+      SELECT region, account_id, date FROM ranked WHERE rn = 1
+    explanation: 分组内取第一条用 ROW_NUMBER 窗口函数；地区为 district.A3，经 account.district_id 关联
+
+  - id: E02
+    question: 单笔代扣金额超过5000的代扣指令有多少条？
+    sql: SELECT COUNT(*) FROM "order" WHERE amount > 5000
+    explanation: 代扣指令在 order 表，表名是 SQL 关键字，须加双引号
+
+  - id: E03
+    question: 在1998年全部出账交易里，按笔数计算，现金取现占多大比例？
+    sql: |-
+      SELECT CAST(SUM(CASE WHEN operation = 'VYBER' THEN 1 ELSE 0 END) AS REAL) / COUNT(*)
+      FROM trans
+      WHERE type IN ('VYDAJ', 'VYBER') AND date BETWEEN '1998-01-01' AND '1998-12-31'
+    explanation: 出账同时包含 VYDAJ 与 VYBER；现金取现为 operation = 'VYBER'；占比先转为 REAL 再相除
+
+  - id: E04
+    question: 放款金额高于全部贷款平均值的贷款有多少笔？
+    sql: SELECT COUNT(*) FROM loan WHERE amount > (SELECT AVG(amount) FROM loan)
+    explanation: 与整体统计量比较时用标量子查询
+
+  - id: E05
+    question: 按放款日期加贷款期限推算，到期日在2000年及以后的贷款有多少笔？
+    sql: SELECT COUNT(*) FROM loan WHERE date(date, '+' || duration || ' months') >= '2000-01-01'
+    explanation: 日期以 YYYY-MM-DD 文本存储，日期推算用 date() 的修饰符；duration 单位为月
+
+  - id: E06
+    question: 1995年各月新开户数，以及截至当月的累计开户数
+    sql: |-
+      WITH monthly AS (
+        SELECT strftime('%Y-%m', date) AS month, COUNT(*) AS opened
+        FROM account WHERE date BETWEEN '1995-01-01' AND '1995-12-31'
+        GROUP BY month
+      )
+      SELECT month, opened, SUM(opened) OVER (ORDER BY month) AS cumulative FROM monthly ORDER BY month
+    explanation: 按月汇总用 strftime('%Y-%m', date)；累计值用 SUM 窗口函数
+
+  - id: E07
+    question: 统计一份代扣指令都没有的账户数量
+    sql: SELECT COUNT(*) FROM account a WHERE NOT EXISTS (SELECT 1 FROM "order" o WHERE o.account_id = a.account_id)
+    explanation: “没有任何”用 NOT EXISTS 反连接，避免 LEFT JOIN 后计数出错
+
+  - id: E08
+    question: 每千人企业家数最多的3个区县，各自有多少个账户？
+    sql: |-
+      WITH top3 AS (SELECT district_id, A2, A14 FROM district ORDER BY A14 DESC LIMIT 3)
+      SELECT t.A2, t.A14, COUNT(a.account_id) AS accounts
+      FROM top3 t LEFT JOIN account a ON a.district_id = t.district_id
+      GROUP BY t.district_id, t.A2, t.A14
+      ORDER BY t.A14 DESC
+    explanation: 区县人口经济属性在 district 的 A2 至 A16 列；先选出区县再关联账户
+
+  - id: E09
+    question: 1997年的交易按金额分为1千以下、1千至1万、1万及以上三档，各档有多少笔？
+    sql: |-
+      SELECT CASE WHEN amount < 1000 THEN '1千以下'
+                  WHEN amount < 10000 THEN '1千至1万'
+                  ELSE '1万及以上' END AS band,
+             COUNT(*) AS cnt
+      FROM trans WHERE date BETWEEN '1997-01-01' AND '1997-12-31'
+      GROUP BY band
+    explanation: 分档统计用 CASE WHEN 生成档位再分组；amount 恒为正
+
+  - id: E10
+    question: 按账户统计1998年触发的监测规则种类，种类不少于两种的账户数量是多少？
+    sql: |-
+      SELECT COUNT(*) FROM (
+        SELECT account_id FROM dwd_risk_event
+        WHERE event_date BETWEEN '1998-01-01' AND '1998-12-31'
+        GROUP BY account_id HAVING COUNT(DISTINCT rule_code) >= 2
+      )
+    explanation: 风险事件明细在 dwd_risk_event；按账户分组后用 HAVING 筛选规则种类数

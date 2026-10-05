@@ -21,15 +21,7 @@ def build_agent(provider: str) -> Text2SQLAgent:
             llm = get_llm(provider)
         except LLMError as exc:
             console.print(f"[yellow]未启用大模型（{exc}），仅规则可判定的问题可以回答。[/yellow]")
-    layer3 = None
-    if llm is not None:
-        try:
-            from text2sql.pipeline.layer3 import GenerativeSQL
-
-            layer3 = GenerativeSQL(llm)
-        except ImportError:
-            pass
-    return Text2SQLAgent(llm=llm, layer3=layer3)
+    return Text2SQLAgent(llm=llm)  # layer 3 is enabled whenever a model is configured
 
 
 def show(resp: AgentResponse, trace: bool) -> None:

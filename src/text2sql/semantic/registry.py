@@ -156,6 +156,12 @@ class SemanticModel(BaseModel):
                 queue.append(edge.to)
         return None
 
+    def base_metric(self, key: str) -> str | None:
+        """The unconditioned metric with the same table and aggregation (cash_withdraw_cnt -> trans_cnt)."""
+        m = self.metrics[key]
+        return next((k for k, x in self.metrics.items() if k != key and not x.filters
+                     and (x.table, x.agg, x.column) == (m.table, m.agg, m.column)), None)
+
     def reachable_dimensions(self, metric_key: str) -> list[str]:
         metric = self.metrics[metric_key]
         return [

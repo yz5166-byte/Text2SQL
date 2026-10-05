@@ -29,6 +29,7 @@ class Prediction(BaseModel):
     attempts: int = 0  # layer-3 generation attempts
     clarify_candidates: list[str] = []
     answer: str | None = None
+    trace: list[dict] = []  # every step of the request: name, detail, elapsed_ms
 
 
 def slot_scores(pred: QueryIR, item: EvalItem) -> dict[str, bool]:
