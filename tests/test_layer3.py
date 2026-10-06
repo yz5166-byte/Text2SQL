@@ -13,7 +13,7 @@ from text2sql.eval.dataset import load_domain_eval
 from text2sql.knowledge.examples import ExamplePicker, load_examples
 from text2sql.knowledge.retriever import TableRetriever
 from text2sql.pipeline.decision import RouteDecision
-from text2sql.pipeline.layer3 import EMPTY_NOTE, GenerativeSQL, schema_text
+from text2sql.pipeline.layer3 import EMPTY_NOTE, NAIVE, GenerativeSQL, Layer3Options, schema_text
 from text2sql.pipeline.prompts import example_output
 from text2sql.pipeline.workflow import Text2SQLAgent
 from text2sql.semantic.registry import load_semantic_model
@@ -25,10 +25,10 @@ model = load_semantic_model()
 L3 = RouteDecision("L3", "llm", "语义层无法表达")
 
 
-def layer3(*replies, max_repairs: int = 3) -> tuple[GenerativeSQL, ScriptedLLM]:
+def layer3(*replies, options: Layer3Options = Layer3Options(max_repairs=3)) -> tuple[GenerativeSQL, ScriptedLLM]:
     llm = ScriptedLLM(*replies)
-    gen = GenerativeSQL(llm, model, SQLiteExecutor(RISK_DB_PATH), retriever=TableRetriever(model, "bm25"),
-                        examples=ExamplePicker(load_examples(), "bm25"), max_repairs=max_repairs)
+    gen = GenerativeSQL(llm, model, SQLiteExecutor(RISK_DB_PATH), options, retriever=TableRetriever(model, "bm25"),
+                        examples=ExamplePicker(load_examples(), "bm25"))
     return gen, llm
 
 
@@ -90,7 +90,7 @@ def test_empty_result_is_returned_with_a_note():
 
 
 def test_repairs_are_bounded():
-    gen, _ = layer3(*[sql("SELEC 1")] * 3, max_repairs=2)
+    gen, _ = layer3(*[sql("SELEC 1")] * 3, options=Layer3Options(max_repairs=2))
     r = gen.answer("随便查点什么", L3)
     assert not r.ok and r.attempts == 3 and r.error.startswith("修复 2 次后仍未成功：护栏拒绝：无法解析 SQL")
 
@@ -115,6 +115,15 @@ def test_prompt_carries_linked_values_and_every_code():
     gen.answer("1998年各地区单笔1万及以上的现金取现交易，平均金额是多少？", L3)
     assert "- 现金取现 → trans.operation = 'VYBER'（交易方式）" in llm.prompts[0]
     assert "出账='VYDAJ'/'VYBER'" in schema_text(model, ["trans"])
+
+
+def test_naive_baseline_sends_the_whole_schema_and_nothing_else():
+    gen, llm = layer3(sql("SELEC 1"), options=NAIVE)
+    r = gen.answer("1998年各地区单笔1万及以上的现金取现交易，平均金额是多少？", L3)
+    prompt = llm.prompts[0]
+    assert not r.ok and r.attempts == 1  # no repair
+    assert all(f"### {t}（" in prompt for t in model.tables)
+    assert "## 示例" not in prompt and "业务取值" not in prompt and "官方口径" not in prompt
 
 
 # ---------------------------------------------------------------- through the agent

@@ -120,7 +120,7 @@ def _build_parse_prompt(model: SemanticModel) -> str:
 {chr(10).join(dim_lines)}
 
 ## 解析规则（按输出字段顺序）
-1. intent：取数问题为 data_query；询问指标口径、计算方法、字段含义、数据在哪张表为 metadata；与银行数据查询无关为 out_of_domain。intent 不是 data_query 时，其余字段取空值。
+1. intent：取数问题为 data_query，包括区县的人口、工资、失业率、犯罪数，以及客户、账户、卡、贷款、交易、代扣指令、账户权限关系等任何与本库数据有关的统计或查询，即使没有对应的已定义指标；询问指标口径、计算方法、字段含义、数据在哪张表为 metadata；与本库数据无关（如天气、写作、编程、业务办理咨询）为 out_of_domain。intent 不是 data_query 时，其余字段取空值。
 2. metrics：问题所求且已定义的指标。优先使用已定义的指标，不要用筛选条件拼出已有指标：问"不良贷款金额"选 bad_loan_amt，而不是 loan_amt 加状态筛选。
 3. time_text：原样摘录问题中的时间表达（如"上个月""1997年第四季度""1995年到1997年"），不要改写或换算；问题没有时间表达时为 null。
 4. dimensions 与 filters：分组维度放 dimensions；筛选条件放 filters，values 原样摘录问题中的筛选值（如"南摩拉维亚""取现""不良""金卡"）。

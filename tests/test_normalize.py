@@ -119,3 +119,11 @@ def test_period_by_period_comparison_goes_to_layer3():
     d = normalized("1997年各月现金取现金额环比", metrics=["cash_withdraw_amt"], query_type="compare", compare="mom",
                    time_text="1997年")
     assert d.route == "L3" and "逐期对比" in d.reason
+
+
+# ---------------------------------------------------------------- found in the X1 test run (after-the-fact fixes)
+def test_tables_outside_the_semantic_layer_go_to_layer3():
+    assert set(model.uncovered_tables()) >= {"order", "disp"}
+    d = normalized("代扣指令中用途为家庭缴费的指令有几条", metrics=["trans_cnt"], query_type="point",
+                   filters=[{"dimension": "trans_purpose", "values": ["家庭缴费"]}])
+    assert d.route == "L3" and "代扣指令表" in d.reason

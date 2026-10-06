@@ -1,7 +1,7 @@
 """Claude through the Anthropic Python SDK (Messages API).
 
 Structured replies use output_config.format (JSON schema); reasoning depth is set with
-output_config.effort because Claude Opus 5 thinks adaptively and rejects temperature.
+output_config.effort because current Claude models (Opus 5, Sonnet 5.5) think adaptively and reject temperature.
 A refusal is recorded as such instead of silently falling back to another model, so the
 model-comparison experiment always measures the model it names.
 """

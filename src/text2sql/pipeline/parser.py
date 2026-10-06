@@ -76,9 +76,12 @@ def describe_errors(exc: ValidationError) -> str:
     return "\n".join(lines)
 
 
-def parse_question(llm: LLMClient, model: SemanticModel, question: str) -> tuple[ParseResult | None, Usage]:
-    """One call, plus one retry that carries the problems found; None after two invalid replies."""
-    usage = Usage()
+def parse_question(llm: LLMClient, model: SemanticModel, question: str) -> tuple[ParseResult | None, Usage, list[str]]:
+    """One call, plus one retry that carries the problems found; None after two invalid replies.
+
+    Also returns the problems of every invalid reply, for the trace.
+    """
+    usage, seen = Usage(), []
     user = f"问题：{question}"
     for _ in range(2):
         reply = llm.complete(parse_system_prompt(model), user, schema=parse_schema(model), purpose="parse")
@@ -89,8 +92,9 @@ def parse_question(llm: LLMClient, model: SemanticModel, question: str) -> tuple
             problems = "1. 输出不是合法的 JSON 对象"
         else:
             try:
-                return ParseResult.model_validate(reply.data, context={"model": model}), usage
+                return ParseResult.model_validate(reply.data, context={"model": model}), usage, seen
             except ValidationError as exc:
                 problems = describe_errors(exc)
+        seen.append(problems)
         user = f"问题：{question}\n\n上一次输出不符合要求：\n{problems}\n请修正后重新输出。"
-    return None, usage
+    return None, usage, seen

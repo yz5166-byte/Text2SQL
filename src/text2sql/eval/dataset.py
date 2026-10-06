@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal
@@ -10,7 +11,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel
 
-from text2sql.config import EVAL_DIR, RAW_DIR
+from text2sql.config import BIRD_DB_PATH, EVAL_DIR, RAW_DIR
 from text2sql.semantic.ir import QueryIR
 from text2sql.semantic.registry import SemanticModel
 
@@ -65,6 +66,15 @@ def load_bird_financial(path: Path = RAW_DIR / "bird_dev_20251106.json") -> list
         for d in data
         if d["db_id"] == "financial"
     ]
+
+
+def bird_tables() -> set[str]:
+    """The 8 tables of BIRD's own financial database, without the derived ones (experiments X3 to X5)."""
+    con = sqlite3.connect(f"file:{BIRD_DB_PATH}?mode=ro", uri=True)
+    try:
+        return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    finally:
+        con.close()
 
 
 def validate_items(items: list[EvalItem], model: SemanticModel) -> list[str]:

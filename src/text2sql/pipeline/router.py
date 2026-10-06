@@ -1,7 +1,8 @@
 """Routing: rules first, then one LLM parse, then deterministic normalization.
 
 1. rules.py      no model call: metadata, out-of-domain, ambiguous terms, vague time, fast path
-2. parser.py     one structured LLM call, validated against the semantic layer, retried once
+2. parser.py     one structured LLM call, validated against the semantic layer, retried once;
+                 two invalid replies mean the question was not understood, so it is clarified
 3. normalize.py  parse -> route and QueryIR; every IR is then fitted to the data range
 """
 
@@ -27,9 +28,11 @@ class Router:
         if decision is None:
             if self.llm is None:
                 raise LLMError("规则未能判定路由，且未配置 LLM（在 .env 中设置 API Key）")
-            parse, usage = parse_question(self.llm, self.model, question)
+            parse, usage, problems = parse_question(self.llm, self.model, question)
             decision = normalize_parse(question, parse, self.model) if parse else RouteDecision(
-                "L3", "llm", "语义解析两次输出不合格，降级生成式 SQL", assumptions=["语义解析未成功，改用生成式 SQL 回答"])
+                "CLARIFY", "llm", "未能理解问题，请换一种说法，或从常用指标中选择", clarify_kind="metric",
+                clarify_options=[m.key for m in self.model.okr_metrics()])
+            decision.parse_problems = problems
         decision = fit_to_data_range(decision, self.model)
         decision.usage = usage
         return decision

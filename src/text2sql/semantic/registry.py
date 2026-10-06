@@ -156,6 +156,33 @@ class SemanticModel(BaseModel):
                 queue.append(edge.to)
         return None
 
+    def restricted_to(self, tables: set[str]) -> "SemanticModel":
+        """A consistent copy that knows only `tables` (the BIRD benchmark has no derived tables):
+        metrics, dimensions, joins, foreign keys and ambiguous terms on other tables are dropped."""
+        def on_kept_table(name: str) -> bool:  # a table or join alias, optionally with ".column"
+            try:
+                return self.physical_table(name.split(".")[0]) in tables
+            except KeyError:
+                return False
+
+        metrics = {k: m for k, m in self.metrics.items() if m.table in tables}
+        metrics = {k: m for k, m in metrics.items() if m.agg != "ratio" or {m.numerator, m.denominator} <= set(metrics)}
+        return self.model_copy(update={
+            "tables": {k: v for k, v in self.tables.items() if k in tables},
+            "metrics": metrics,
+            "dimensions": {k: d for k, d in self.dimensions.items() if on_kept_table(d.column)},
+            "join_graph": [e for e in self.join_graph if on_kept_table(e.from_) and e.physical_table in tables],
+            "foreign_keys": [fk for fk in self.foreign_keys if all(on_kept_table(s.strip()) for s in fk.split("->"))],
+            "ambiguous_terms": {t: [c for c in cs if c in metrics] for t, cs in self.ambiguous_terms.items()
+                                if any(c in metrics for c in cs)},
+        })
+
+    def uncovered_tables(self) -> list[str]:
+        """Tables that no metric reads and no dimension groups by (代扣指令表 order, for example)."""
+        used = {m.table for m in self.metrics.values()}
+        used |= {self.physical_table(d.column.split(".")[0]) for d in self.dimensions.values()}
+        return [t for t in self.tables if t not in used]
+
     def base_metric(self, key: str) -> str | None:
         """The unconditioned metric with the same table and aggregation (cash_withdraw_cnt -> trans_cnt)."""
         m = self.metrics[key]

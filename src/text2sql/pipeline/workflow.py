@@ -87,6 +87,8 @@ class Text2SQLAgent:
         resp.assumptions = list(decision.assumptions)
         resp.ir = decision.ir.model_dump(mode="json") if decision.ir else None
         parse_calls = f"；解析调用 {decision.usage.calls} 次" if decision.usage.calls else ""
+        if decision.parse_problems:
+            parse_calls += "；不合格原因：" + " / ".join(p.replace("\n", " ") for p in decision.parse_problems)
         resp.trace.append(TraceStep("route", f"{decision.route}（{decision.source}）：{decision.reason}{parse_calls}",
                                     (time.perf_counter() - step_t) * 1000))
 

@@ -16,14 +16,15 @@ from text2sql.llm.base import LLMError, LLMReply, Usage, extract_json
 
 
 class DeepSeekClient:
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, think_for_generate: bool | None = None):
         key = os.getenv("DEEPSEEK_API_KEY")
         if not key:
             raise LLMError("DEEPSEEK_API_KEY is not set (copy .env.example to .env)")
         self.model = model or settings.deepseek_model
         self.name = f"deepseek:{self.model}"
         self.client = OpenAI(api_key=key, base_url="https://api.deepseek.com", timeout=120, max_retries=2)
-        self.think_for_generate = os.getenv("DEEPSEEK_THINKING_FOR_GENERATE", "0") == "1"
+        env = os.getenv("DEEPSEEK_THINKING_FOR_GENERATE", "0") == "1"
+        self.think_for_generate = env if think_for_generate is None else think_for_generate
 
     def complete(self, system: str, user: str, *, schema: dict | None = None, purpose: str = "parse") -> LLMReply:
         thinking = purpose == "generate" and self.think_for_generate

@@ -31,6 +31,12 @@ class RetrievalReport:
     mean_tables: float  # tables handed to the model per question
 
 
+def coverage(retriever: TableRetriever, cases: dict[str, tuple[str, str]]) -> dict[str, bool]:
+    """Per case id (query text, gold SQL): were all the tables the gold SQL reads retrieved?"""
+    return {cid: gold_tables(sql, retriever.graph) <= set(retriever.retrieve(text).all)
+            for cid, (text, sql) in cases.items()}
+
+
 def evaluate_retrieval(retriever: TableRetriever, cases: list[tuple[str, str]]) -> RetrievalReport:
     """`cases` are (query text, gold SQL) pairs."""
     hit = total = complete = handed = 0

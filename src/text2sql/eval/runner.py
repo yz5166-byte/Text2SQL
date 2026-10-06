@@ -10,8 +10,11 @@ from pathlib import Path
 from typing import Callable
 
 from text2sql.config import RUNS_DIR
+from text2sql.eval.cost import price_for, request_cost
 from text2sql.eval.dataset import DATA_ROUTES, EvalItem
 from text2sql.eval.metrics import Prediction, compute_metrics
+from text2sql.pipeline.decision import RouteDecision
+from text2sql.pipeline.layer3 import GenerativeSQL
 from text2sql.pipeline.semantic import run_queries
 from text2sql.pipeline.workflow import Text2SQLAgent
 from text2sql.semantic.okr import compile_ir, l1_ineligibility
@@ -28,15 +31,38 @@ def gold_result_sets(items: list[EvalItem], db_path: Path) -> dict[str, list]:
 
 
 def agent_predictor(agent: Text2SQLAgent) -> Predictor:
+    price = price_for(getattr(agent.llm, "name", None))
+
     def predict(item: EvalItem) -> Prediction:
         r = agent.ask(item.question)
         ok_rows = r.rows if r.route in DATA_ROUTES and r.error is None else None
+        u = r.usage
         return Prediction(
-            item_id=item.id, route=r.route, ir=r.ir, sql="\n;\n".join(r.sql) or None, rows=ok_rows,
-            error=r.error, latency_s=r.latency_s, llm_calls=r.usage.calls, input_tokens=r.usage.input_tokens,
-            output_tokens=r.usage.output_tokens, attempts=r.attempts,
+            item_id=item.id, route=r.route, source=r.source, ir=r.ir, sql="\n;\n".join(r.sql) or None, rows=ok_rows,
+            error=r.error, latency_s=r.latency_s, llm_calls=u.calls, input_tokens=u.input_tokens,
+            cached_input_tokens=u.cached_input_tokens, output_tokens=u.output_tokens,
+            cost_usd=request_cost(price, u.input_tokens, u.cached_input_tokens, u.output_tokens) if price else 0.0,
+            attempts=r.attempts,
             clarify_candidates=[o["metric"] for o in r.clarify_options], answer=r.answer,
             trace=[asdict(step) for step in r.trace],
+        )
+    return predict
+
+
+def generation_predictor(layer3: GenerativeSQL) -> Predictor:
+    """Every question straight to layer 3 (experiment X2): no rules, no semantic layer, no router."""
+    price = price_for(layer3.llm.name)
+
+    def predict(item: EvalItem) -> Prediction:
+        t0 = time.perf_counter()
+        r = layer3.answer(item.question, RouteDecision("L3", "llm", "直接进入第三层"), item.evidence)
+        u = r.usage
+        return Prediction(
+            item_id=item.id, route="L3", source="llm", sql=r.sql, rows=[list(x) for x in r.rows] if r.ok else None,
+            error=r.error, latency_s=time.perf_counter() - t0, llm_calls=u.calls, input_tokens=u.input_tokens,
+            cached_input_tokens=u.cached_input_tokens, output_tokens=u.output_tokens,
+            cost_usd=request_cost(price, u.input_tokens, u.cached_input_tokens, u.output_tokens) if price else 0.0,
+            attempts=r.attempts, trace=[asdict(step) for step in r.trace],
         )
     return predict
 

@@ -18,6 +18,7 @@ SLOT_FIELDS = ("metrics", "query_type", "time_range", "grain", "dimensions", "fi
 class Prediction(BaseModel):
     item_id: str
     route: str | None = None
+    source: str | None = None  # who decided the route: rule, fast_path or llm
     ir: QueryIR | None = None
     sql: str | None = None
     rows: list[list[Any]] | None = None
@@ -25,7 +26,9 @@ class Prediction(BaseModel):
     latency_s: float = 0.0
     llm_calls: int = 0
     input_tokens: int = 0
+    cached_input_tokens: int = 0  # part of input_tokens served from the provider's cache
     output_tokens: int = 0
+    cost_usd: float = 0.0  # at the peak price (eval/cost.py)
     attempts: int = 0  # layer-3 generation attempts
     clarify_candidates: list[str] = []
     answer: str | None = None
@@ -70,6 +73,7 @@ def compute_metrics(
     ex_by_route: dict[str, list[bool]] = defaultdict(list)
     executable: list[bool] = []
     strict: list[bool] = []
+    strict_by_item: dict[str, bool] = {}
     for item in items:
         if item.route not in DATA_ROUTES:
             continue
@@ -78,6 +82,7 @@ def compute_metrics(
         ex_by_route[item.route].append(ok)
         executable.append(pred.rows is not None)
         strict.append(pred.rows is not None and bird_ex(pred.rows, gold_rows[item.id]))
+        strict_by_item[item.id] = strict[-1]
     all_ex = [x for v in ex_by_route.values() for x in v]
     out["ex"] = _pct(sum(all_ex), len(all_ex))
     out["ex_strict"] = _pct(sum(strict), len(strict))
@@ -104,18 +109,31 @@ def compute_metrics(
     out["clarify_precision"] = _pct(len(gold_c & pred_c), len(pred_c))
     out["clarify_recall"] = _pct(len(gold_c & pred_c), len(gold_c))
 
-    # cost and latency per predicted route
+    # per item, for comparing repeated runs: execution match on data questions, the route otherwise
+    out["per_item"] = {
+        i.id: (lenient_ex(preds[i.id].rows, gold_rows[i.id], i.order_matters) if preds[i.id].rows is not None else False)
+        if i.route in DATA_ROUTES else preds[i.id].route == i.route
+        for i in items
+    }
+    out["per_item_strict"] = {i: strict_by_item.get(i, ok) for i, ok in out["per_item"].items()}  # BIRD's own rule
+    out["source_share"] = dict(Counter(preds[i.id].source or "none" for i in items))
+
+    # cost and latency, overall and per predicted route
+    everything = [preds[i.id] for i in items]
+    out["efficiency"] = _efficiency(everything)
     per_route: dict[str, list[Prediction]] = defaultdict(list)
     for item in items:
         per_route[preds[item.id].route or "NONE"].append(preds[item.id])
-    out["by_pred_route"] = {
-        r: {
-            "n": len(ps),
-            "latency_p50": _quantile([p.latency_s for p in ps], 0.5),
-            "latency_p95": _quantile([p.latency_s for p in ps], 0.95),
-            "llm_calls_mean": round(statistics.mean(p.llm_calls for p in ps), 2),
-            "tokens_mean": round(statistics.mean(p.input_tokens + p.output_tokens for p in ps), 1),
-        }
-        for r, ps in sorted(per_route.items())
-    }
+    out["by_pred_route"] = {r: {"n": len(ps), **_efficiency(ps)} for r, ps in sorted(per_route.items())}
     return out
+
+
+def _efficiency(ps: list[Prediction]) -> dict[str, float]:
+    return {
+        "latency_p50": _quantile([p.latency_s for p in ps], 0.5),
+        "latency_p95": _quantile([p.latency_s for p in ps], 0.95),
+        "llm_calls_mean": round(statistics.mean(p.llm_calls for p in ps), 2),
+        "tokens_mean": round(statistics.mean(p.input_tokens + p.output_tokens for p in ps), 1),
+        "cost_usd_mean": round(statistics.mean(p.cost_usd for p in ps), 6),
+        "cost_usd_total": round(sum(p.cost_usd for p in ps), 6),
+    }

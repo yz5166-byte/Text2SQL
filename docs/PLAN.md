@@ -134,7 +134,7 @@ EX 判定：BIRD 采用官方结果集比较；自建集允许额外说明列（
 |---|---|
 | 语言与环境 | Python 3.12 或 3.13（以依赖兼容性为准），uv 管理依赖 |
 | 数据库 | SQLite，只读模式 |
-| 模型 | DeepSeek `deepseek-flash`（默认）；Claude `claude-opus-5`（对比实验） |
+| 模型 | DeepSeek `deepseek-flash`（默认）；Claude `claude-sonnet-5-5`（对比实验） |
 | 结构化输出 | DeepSeek JSON 模式；Claude 结构化输出；Pydantic 校验 |
 | SQL 处理 | Jinja2 参数化模版（第二层）；sqlglot 解析与护栏（第三层） |
 | 检索 | 自实现 BM25（中文字符二元组切分）；fastembed + bge-small-zh-v1.5；RRF 融合；numpy 向量检索 |

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -23,7 +24,7 @@ from text2sql.config import settings
 from text2sql.db.executor import ErrorKind, ExecResult, SQLiteExecutor, is_repairable
 from text2sql.db.guard import guard_sql
 from text2sql.knowledge.examples import ExamplePicker, SQLExample, load_examples
-from text2sql.knowledge.retriever import TableRetriever
+from text2sql.knowledge.retriever import Method, TableRetriever
 from text2sql.llm.base import LLMClient, Usage
 from text2sql.pipeline.decision import RouteDecision
 from text2sql.pipeline.meta import formula
@@ -49,6 +50,21 @@ SQL_SCHEMA = {
 WIDEN_ON = {ErrorKind.NO_SUCH_COLUMN, ErrorKind.AMBIGUOUS_COLUMN}  # the needed table may not have been retrieved
 MAX_VALUES_SHOWN = 20
 EMPTY_NOTE = "查询结果为空，未做修复；如与预期不符，请核对 SQL 中的筛选条件与取值写法"
+
+
+@dataclass(frozen=True)
+class Layer3Options:
+    """Switches for the experiments (X2 to X4); the defaults are the production layer 3."""
+
+    schema: Literal["retrieved", "full"] = "retrieved"
+    retrieval: Method = "hybrid"  # how tables are retrieved when schema is "retrieved" (X4)
+    examples: int = 3  # similar examples in the prompt; 0 turns them off
+    knowledge: bool = True  # official metric definitions and linked values
+    max_repairs: int | None = None  # None: settings.max_repair_attempts
+
+
+# Plain text-to-SQL: the whole schema and the question, one generation, no repair (X2 baseline).
+NAIVE = Layer3Options(schema="full", examples=0, knowledge=False, max_repairs=0)
 
 
 class GeneratedSQL(BaseModel):
@@ -79,21 +95,23 @@ class Attempt:
 
 class GenerativeSQL:
     def __init__(self, llm: LLMClient, model: SemanticModel, executor: SQLiteExecutor,
-                 retriever: TableRetriever | None = None, examples: ExamplePicker | None = None,
-                 max_repairs: int | None = None):
-        self.llm, self.model, self.executor = llm, model, executor
-        self.retriever = retriever or TableRetriever(model)
+                 options: Layer3Options = Layer3Options(), retriever: TableRetriever | None = None,
+                 examples: ExamplePicker | None = None):
+        self.llm, self.model, self.executor, self.options = llm, model, executor, options
+        self.retriever = retriever or TableRetriever(model, options.retrieval)
         self.examples = examples or ExamplePicker(load_examples())
-        self.max_repairs = settings.max_repair_attempts if max_repairs is None else max_repairs
+        self.max_repairs = settings.max_repair_attempts if options.max_repairs is None else options.max_repairs
 
     def answer(self, question: str, decision: RouteDecision, evidence: str | None = None) -> L3Result:
         out = L3Result(ok=False)
         t = time.perf_counter()
-        retrieval = self.retriever.retrieve(f"{question} {evidence or ''}")
-        tables = retrieval.all
-        examples = self.examples.pick(question)
-        out.trace.append(TraceStep("retrieve", f"表 {retrieval.tables}，连接补全 {retrieval.bridged}，"
-                                               f"示例 {[e.id for e in examples]}", _ms(t)))
+        if self.options.schema == "full":
+            tables, context = list(self.model.tables), "全量表结构"
+        else:
+            retrieval = self.retriever.retrieve(f"{question} {evidence or ''}")
+            tables, context = retrieval.all, f"表 {retrieval.tables}，连接补全 {retrieval.bridged}"
+        examples = self.examples.pick(question, self.options.examples) if self.options.examples else []
+        out.trace.append(TraceStep("retrieve", f"{context}，示例 {[e.id for e in examples]}", _ms(t)))
         request = self._request(question, decision, evidence, examples)
         feedback, last = "", None
         for attempt_no in range(1, self.max_repairs + 2):
@@ -115,6 +133,8 @@ class GenerativeSQL:
                 return _succeeded(out, attempt, generated.explanation)
             if not is_repairable(attempt.error_kind):
                 return _failed(out, attempt.reason, attempt.sql)
+            if attempt_no > self.max_repairs:  # no repair left: widening would change nothing
+                break
             if attempt.error_kind in WIDEN_ON and len(tables) < len(self.model.tables):
                 tables = list(self.model.tables)
                 out.trace.append(TraceStep("widen", "字段相关错误，修复改用全量表结构", 0))
@@ -142,15 +162,16 @@ class GenerativeSQL:
                  examples: list[SQLExample]) -> str:
         """Everything after the tables: definitions, examples and the question itself."""
         parts = []
-        definitions = self._definitions(question, decision)
+        definitions = self._definitions(question, decision) if self.options.knowledge else ""
         if definitions:
             parts.append("## 官方口径（问题涉及这些指标时按此计算）\n" + definitions)
-        values = self._values(question)
+        values = self._values(question) if self.options.knowledge else ""
         if values:
             parts.append("## 问题中识别到的业务取值（写筛选条件时使用这些字段与编码）\n" + values)
-        shots = [f"问题：{e.question}\n输出：{json.dumps({'sql': e.sql, 'explanation': e.explanation}, ensure_ascii=False)}"
-                 for e in examples]
-        parts.append("## 示例\n" + "\n".join(shots))
+        if examples:
+            shots = [f"问题：{e.question}\n输出：{json.dumps({'sql': e.sql, 'explanation': e.explanation}, ensure_ascii=False)}"
+                     for e in examples]
+            parts.append("## 示例\n" + "\n".join(shots))
         ask = [f"问题：{question}"]
         if evidence:
             ask.append(f"外部知识：{evidence}")

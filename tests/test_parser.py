@@ -56,12 +56,12 @@ def test_retry_carries_readable_errors():
     assert "1. 字段 metrics：['loan_balance'] 不在可用指标中" in llm.prompts[1]
 
 
-def test_two_invalid_replies_degrade_to_layer3():
+def test_two_invalid_replies_are_clarified_and_traced():
     llm = ScriptedLLM(None, {**VALID, "limit": 0})
     decision = Router(model, llm).route(QUESTION)
-    assert decision.route == "L3" and decision.usage.calls == 2
-    assert decision.time_hint is None  # without a parse there is no model extraction to hint the period
+    assert decision.route == "CLARIFY" and decision.clarify_kind == "metric" and decision.usage.calls == 2
     assert "输出不是合法的 JSON 对象" in llm.prompts[1]
+    assert len(decision.parse_problems) == 2 and "字段 limit" in decision.parse_problems[1]
 
 
 def test_text_without_a_json_object_yields_none():

@@ -21,6 +21,7 @@ from sqlglot import exp
 
 from text2sql.config import DATA_END_DATE, DATA_START_DATE
 from text2sql.pipeline.decision import NO_TIME_NOTE, RouteDecision, semantic_layer
+from text2sql.pipeline.meta import table_mentions
 from text2sql.pipeline.parser import ParseResult
 from text2sql.semantic.ir import Grain, QueryIR
 from text2sql.semantic.linker import link_value, link_value_any
@@ -43,9 +44,11 @@ def normalize_parse(question: str, p: ParseResult, model: SemanticModel) -> Rout
     if p.status == "clarify" or (p.status == "covered" and not p.metrics):
         return RouteDecision("CLARIFY", "llm", p.reason or "未识别到明确指标", parse=p, clarify_kind="metric",
                              clarify_options=[m.key for m in model.okr_metrics()])
-    if p.status == "uncovered":
+    outside = [t for t in table_mentions(question, model) if t in model.uncovered_tables()]
+    if p.status == "uncovered" or outside:  # a table the semantic layer does not cover cannot be expressed
         hint = parse_time(p.time_text) if p.time_text else None
-        reason = "语义层无法表达，转生成式 SQL" + (f"：{p.reason}" if p.reason else "")
+        why = f"涉及语义层未覆盖的{'、'.join(model.tables[t].name_zh for t in outside)}" if outside else p.reason
+        reason = "语义层无法表达，转生成式 SQL" + (f"：{why}" if why else "")
         return RouteDecision("L3", "llm", reason, parse=p, time_hint=(hint.start, hint.end) if hint else None)
 
     time_range, unclear = _covered_period(question, p.time_text)

@@ -28,6 +28,7 @@ class RouteDecision:
     clarify_options: list[str] = field(default_factory=list)  # candidate metrics of a metric clarification
     assumptions: list[str] = field(default_factory=list)  # every default or repair, disclosed in the answer
     time_hint: tuple[date, date] | None = None  # resolved time range handed to layer 3
+    parse_problems: list[str] = field(default_factory=list)  # why parser replies were rejected, for the trace
     usage: Usage = field(default_factory=Usage)
 
 
