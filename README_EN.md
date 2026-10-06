@@ -141,6 +141,7 @@ tests/           unit and integration tests (no live model calls)
 | Document | Contents |
 |---|---|
 | [docs/PLAN.md](docs/PLAN.md) | Plan, architecture and key design decisions |
+| [docs/ENGINEERING.md](docs/ENGINEERING.md) | Engineering guide: modules, data structures, request flow, configuration, evaluation, extension |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | Experiments X1 to X5: settings, results, error analysis |
 | [docs/DATA_PROFILE.md](docs/DATA_PROFILE.md) | Data profile and the basis of the risk-rule thresholds |
 | [eval/README.md](eval/README.md) | Evaluation set, conventions and scoring rules |

@@ -141,6 +141,7 @@ tests/           单元与集成测试（不调用真实模型）
 | 文档 | 内容 |
 |---|---|
 | [docs/PLAN.md](docs/PLAN.md) | 项目规划、架构与关键设计决策 |
+| [docs/ENGINEERING.md](docs/ENGINEERING.md) | 工程文档：模块、数据结构、处理流程、配置、评估与扩展方法 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | 实验 X1 至 X5 的设置、结果与误差分析 |
 | [docs/DATA_PROFILE.md](docs/DATA_PROFILE.md) | 数据探查与风险规则阈值的依据 |
 | [eval/README.md](eval/README.md) | 评估集构成、基准约定与判定规则 |
