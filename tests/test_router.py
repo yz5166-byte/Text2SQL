@@ -49,5 +49,5 @@ def test_agent_answers_without_model_for_rule_decided_questions():
     assert "不良贷款笔数 ÷ 放款笔数" in agent.ask("不良率是怎么计算的？").answer
     clar = agent.ask("上个月的损失有多少？")
     assert clar.route == "CLARIFY" and [o["metric"] for o in clar.clarify_options] == ["bad_loan_amt", "risk_amt"]
-    follow = agent.resolve_clarification("上个月的损失有多少？", "risk_amt")
+    follow = agent.resolve_metric_clarification("上个月的损失有多少？", "risk_amt")
     assert follow.route == "L1" and follow.rows == [[9609493]]

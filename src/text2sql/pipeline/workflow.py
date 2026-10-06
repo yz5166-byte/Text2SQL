@@ -22,6 +22,7 @@ from text2sql.semantic.compiler import CompileError
 from text2sql.semantic.ir import QueryIR
 from text2sql.semantic.okr import compile_ir
 from text2sql.semantic.registry import SemanticModel, load_semantic_model
+from text2sql.semantic.timeparse import VAGUE, find_times, normalize, parse_time
 
 OOD_TEXT = (
     "这个问题不在取数助手的服务范围内。我可以回答银行风控与经营数据问题，例如：\n"
@@ -30,6 +31,7 @@ OOD_TEXT = (
 )
 SUMMARY_NOTE = "首句总结由模型根据结果表生成，其中数字均已与结果表核对"
 TIME_HINT = f"请给出具体的时间范围，例如：1998年11月、1998年第三季度、1997年到1998年（数据范围 {DATA_START_DATE} 至 {DATA_END_DATE}）。"
+MAX_CLARIFY_ROUNDS = 3  # clarification answers a front end accepts for one question
 
 
 class Layer3(Protocol):
@@ -48,6 +50,7 @@ class AgentResponse:
     display_rows: list[list[str]] = field(default_factory=list)
     sql: list[str] = field(default_factory=list)
     ir: dict | None = None
+    clarify_kind: str | None = None  # "metric": pick one of clarify_options; "time": give a time
     clarify_options: list[dict] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     trace: list[TraceStep] = field(default_factory=list)
@@ -96,7 +99,12 @@ class Text2SQLAgent:
             "L1": self._semantic, "L2": self._semantic, "L3": self._generative,
             "META": self._meta, "OOD": self._ood, "CLARIFY": self._clarify,
         }[decision.route]
-        handler(question, decision, resp)
+        try:
+            handler(question, decision, resp)
+        except LLMError as exc:  # a failed model call ends this request, not the session
+            resp.error = f"模型调用失败：{exc}"
+            resp.answer = resp.error
+            resp.trace.append(TraceStep("error", resp.error, 0))
         resp.latency_s = time.perf_counter() - t0
         return resp
 
@@ -160,6 +168,7 @@ class Text2SQLAgent:
         resp.answer = OOD_TEXT
 
     def _clarify(self, question: str, decision: RouteDecision, resp: AgentResponse) -> None:
+        resp.clarify_kind = decision.clarify_kind
         if decision.clarify_kind == "time":
             resp.answer = f"需要确认：{decision.reason}。{TIME_HINT}"
             return
@@ -186,10 +195,29 @@ class Text2SQLAgent:
         resp.display_columns, resp.display_rows = ans.display_table(columns, rows, self.model, ir)
 
     # ------------------------------------------------------------------ clarification follow-up
-    def resolve_clarification(self, question: str, metric_key: str) -> AgentResponse:
+    def resolve_metric_clarification(self, question: str, metric_key: str) -> AgentResponse:
         """Re-ask with the chosen metric substituted for the ambiguous term (or appended)."""
         name = self.model.metrics[metric_key].name
         for term in self.model.ambiguous_terms:
             if term in question:
                 return self.ask(question.replace(term, name, 1))
         return self.ask(f"{question}（指标：{name}）")
+
+    def resolve_time_clarification(self, question: str, reply: str) -> AgentResponse | None:
+        """Re-ask with the time in the user's reply; None when the reply holds no time the rules can read."""
+        span = parse_time(reply)
+        return self.ask(with_time(question, span.text)) if span else None
+
+
+def with_time(question: str, time_text: str) -> str:
+    """The question with its time expressions and vague time words replaced by `time_text`.
+
+    In a question the semantic layer can express, every time expression is the period (D-54), so
+    the user's answer replaces all of them; a question without one gets the time in front.
+    """
+    text = normalize(question)
+    for target in [s.text for s in find_times(text)] + VAGUE.findall(text):
+        text = text.replace(target, "\0", 1)
+    if "\0" not in text:
+        return time_text + text
+    return text.replace("\0", time_text, 1).replace("\0", "")

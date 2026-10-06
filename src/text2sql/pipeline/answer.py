@@ -11,6 +11,9 @@ from text2sql.semantic.registry import SemanticModel
 from text2sql.semantic.timeparse import baseline_range
 
 LAYER_ZH = {"L1": "第一层：OKR 物化表查询", "L2": "第二层：语义层编译 SQL", "L3": "第三层：生成式 SQL"}
+ROUTE_ZH = {"L1": "第一层 OKR 物化表", "L2": "第二层 语义层编译", "L3": "第三层 生成式 SQL",
+            "CLARIFY": "需要澄清", "OOD": "超出服务范围", "META": "口径问答"}
+SOURCE_ZH = {"rule": "规则", "fast_path": "快速通道", "llm": "模型解析"}
 SUFFIX_ZH = {"current": "本期", "baseline": "基期", "change": "变化量", "change_rate": "变化率"}
 NO_BASELINE = {"baseline": "无数据", "change": "无数据", "change_rate": "无法计算"}  # baseline before the data
 
@@ -105,3 +108,12 @@ def caliber_lines(ir: QueryIR, model: SemanticModel) -> list[str]:
 
 def data_note(asof: date = DATA_END_DATE) -> str:
     return f"数据截至 {asof}"
+
+
+def response_title(route: str | None, source: str | None, failed: bool) -> str:
+    """Title over an answer for people: the layer and who decided, or 未完成 and where it stopped."""
+    if route is None:
+        return "未完成 · 路由失败"
+    if failed:
+        return f"未完成 · {ROUTE_ZH[route]}"
+    return f"{ROUTE_ZH[route]} · {SOURCE_ZH[source]}"

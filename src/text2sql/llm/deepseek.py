@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 
+import openai
 from openai import OpenAI
 
 from text2sql.config import settings
@@ -44,7 +45,12 @@ class DeepSeekClient:
             )
         usage = Usage()
         for _ in range(2):  # JSON mode may occasionally return empty content
-            resp = self.client.chat.completions.create(**kwargs)
+            try:
+                resp = self.client.chat.completions.create(**kwargs)
+            except openai.APIStatusError as exc:
+                raise LLMError(f"DeepSeek API error {exc.status_code}: {exc.message}") from exc
+            except openai.APIConnectionError as exc:
+                raise LLMError(f"DeepSeek connection error: {exc}") from exc
             u = resp.usage
             usage.add(Usage(1, u.prompt_tokens, u.completion_tokens, getattr(u, "prompt_cache_hit_tokens", 0) or 0))
             text = resp.choices[0].message.content or ""

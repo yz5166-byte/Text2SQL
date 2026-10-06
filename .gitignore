@@ -217,7 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Private interview preparation materials (kept local, never published)
+# Local notes (never published)
 interview_prep/
 
 # Project data and runtime artifacts (databases are rebuilt by scripts)
