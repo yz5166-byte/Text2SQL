@@ -3,7 +3,7 @@
 The model only copies the time phrase out of a question; this module turns it into an
 inclusive date range. Rules are tried in a fixed order and the first match wins.
 
-Conventions (decided in review, see the progress board)
+Conventions
   "today" is the reference date: 1998-12-31, the last day with data
   上个月 / 上季度 / 去年 are calendar periods, not rolling windows
   近 N 个月 includes the current month

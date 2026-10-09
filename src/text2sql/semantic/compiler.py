@@ -8,10 +8,10 @@ semantic model and every user-supplied value is a bound parameter.
 The public building blocks (Params, render, conjoin, in_list, between, order_keys, compare_*)
 are shared with layer 1 (okr.py).
 
-Decisions (see the progress board): one template per query type; a metric's own conditions
-go to WHERE when every metric of the query shares them, otherwise into conditional
-aggregates; metrics on different tables compile to one query per table, merged by the
-caller; a ratio is numerator / denominator and NULL when the denominator is 0.
+A metric's own conditions go to WHERE when every metric in the query shares them, and into
+conditional aggregates otherwise. Metrics on different tables compile to one query per table,
+which the caller merges on the key columns. A ratio is numerator / denominator, NULL when the
+denominator is 0.
 """
 
 from __future__ import annotations

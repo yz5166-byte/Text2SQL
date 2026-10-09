@@ -4,9 +4,9 @@ EXPLAIN QUERY PLAN plays the role of the production dry run (the statement is co
 not executed); a progress handler enforces the timeout; every failure is mapped to an
 ErrorKind that the layer-3 repair loop uses to decide whether a rewrite can help.
 
-Decisions (see the progress board): read-only at the database level, with a statement
-guard added in layer 3; EXPLAIN is used only to catch errors; 1,000 rows for display and
-a larger cap for evaluation; a missing table is not sent back for repair.
+Writes are refused by the database itself; layer 3 adds a statement guard on top (guard.py).
+EXPLAIN is used only to catch errors. Rows are capped at 1,000 for display and higher for
+evaluation. A missing table is never sent back for repair, since no rewrite can create it.
 """
 
 from __future__ import annotations

@@ -2,12 +2,9 @@
 
 ads_okr_monthly holds one row per (month, region, metric): the value, plus numerator and
 denominator for ratios. It is built by the layer-2 compiler (materialize.py), so both layers
-share one definition of every metric. Whether a question may use the table is decided by
-rules in code; the model never reads any number.
-
-Decisions (see the progress board): the table is aggregated by region only; a distinct count
-is served month by month only (a quarter goes back to the base tables); a distinct count
-filtered on several regions also goes back to the base tables.
+share one definition of every metric. Whether a question can use the table is decided here,
+in code. The table is aggregated by region only, and a distinct count is served one month at
+a time, so a quarter or a filter on several regions goes back to the base tables.
 """
 
 from __future__ import annotations

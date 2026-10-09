@@ -4,9 +4,9 @@ Every value comes from an ordinary layer-2 query, so the OKR table and layer 2 s
 definition of each metric. Ratios keep numerator and denominator, so any coarser grain is
 recomputed as sum(numerator) / sum(denominator).
 
-Decisions (see the progress board): built by the layer-2 compiler; fully rebuilt on every run,
-inside one transaction; only cells with data are written; consistency with layer 2 is checked
-by the test suite.
+The table is rebuilt in full on every run inside one transaction, so a failed build leaves the
+previous table in place. Only cells with data are written, as layer 2 lists only groups that
+have data; the test suite checks that both layers return the same numbers.
 """
 
 from __future__ import annotations

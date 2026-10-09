@@ -5,9 +5,9 @@ The dictionaries are the governed vocabularies in semantic/*.yaml. Three jobs:
 2. find_ambiguous_terms   declared ambiguous words (损失 ...) not covered by a longer metric name
 3. link_value             one value phrase (取现, 南摩拉维亚, 不良) mapped to the codes of one dimension
 
-Decisions (see the progress board): longest match for metrics; values link by exact key
-first, and by similarity only when one value is the unique best at or above 0.85, which is
-then disclosed in the answer.
+Metrics are found by longest match. A value links by exact key first, and by similarity only
+when one value is the unique best at or above 0.85; a link made by similarity is disclosed in
+the answer.
 """
 
 from __future__ import annotations

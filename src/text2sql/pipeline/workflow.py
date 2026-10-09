@@ -212,7 +212,7 @@ class Text2SQLAgent:
 def with_time(question: str, time_text: str) -> str:
     """The question with its time expressions and vague time words replaced by `time_text`.
 
-    In a question the semantic layer can express, every time expression is the period (D-54), so
+    In a question the semantic layer can express, every time expression is the period (see normalize.py), so
     the user's answer replaces all of them; a question without one gets the time in front.
     """
     text = normalize(question)
