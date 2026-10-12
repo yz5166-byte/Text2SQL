@@ -2,6 +2,7 @@
 
   uv run python scripts/eval_retrieval.py                              # domain layer-3 questions and BIRD
   uv run python scripts/eval_retrieval.py --dataset bird --bridged-only --section X4-RECALL
+  uv run python scripts/eval_retrieval.py --dataset bird --distractors     # 75 tables: BIRD's other dev tables mixed in
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import argparse
 
 from text2sql.config import ROOT
 from text2sql.eval.dataset import bird_tables, load_bird_financial, load_domain_eval
+from text2sql.eval.distractors import distractor_db, with_distractors
 from text2sql.eval.repeats import write_section
 from text2sql.eval.retrieval import evaluate_retrieval, gold_tables
 from text2sql.knowledge.retriever import TableRetriever
@@ -24,16 +26,18 @@ def main() -> None:
     ap.add_argument("--dataset", choices=["both", "domain", "bird"], default="both",
                     help="bird uses BIRD's own 8 tables, as in experiments X3 and X4")
     ap.add_argument("--bridged-only", action="store_true", help="only with the join bridge, plus the full schema")
+    ap.add_argument("--distractors", action="store_true", help="BIRD's other dev tables mixed in (large schema)")
     ap.add_argument("--section", help="report section to write the table into, such as X4-RECALL")
     args = ap.parse_args()
 
     model = load_semantic_model()
+    widen = with_distractors if args.distractors else (lambda m: m)
     suites = {}
     if args.dataset in ("both", "domain"):
-        suites["自建第三层"] = (model, [(i.question, i.gold_sql) for i in load_domain_eval() if i.route == "L3"])
+        suites["自建第三层"] = (widen(model), [(i.question, i.gold_sql) for i in load_domain_eval() if i.route == "L3"])
     if args.dataset in ("both", "bird"):
         bird = model.restricted_to(bird_tables()) if args.dataset == "bird" else model
-        suites["BIRD"] = (bird, [(f"{i.question} {i.evidence or ''}", i.gold_sql) for i in load_bird_financial()])
+        suites["BIRD"] = (widen(bird), [(f"{i.question} {i.evidence or ''}", i.gold_sql) for i in load_bird_financial()])
 
     lines = ["| 题目 | 表结构 | 表召回 | 所需表全部召回 | 平均交给模型的表数 |", "|---|---|---|---|---|"]
     for name, (m, cases) in suites.items():

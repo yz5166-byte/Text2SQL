@@ -63,6 +63,7 @@ def generation_predictor(layer3: GenerativeSQL) -> Predictor:
             cached_input_tokens=u.cached_input_tokens, output_tokens=u.output_tokens,
             cost_usd=request_cost(price, u.input_tokens, u.cached_input_tokens, u.output_tokens) if price else 0.0,
             attempts=r.attempts, trace=[asdict(step) for step in r.trace],
+            context_tables=r.context_tables, context_columns=r.context_columns,
         )
     return predict
 

@@ -4,17 +4,20 @@ from text2sql.llm.base import LLMReply, Usage
 
 
 class ScriptedLLM:
-    """A dict is a structured (JSON) reply, a str a text reply, None a reply that holds no JSON."""
+    """A dict is a structured (JSON) reply, a str a text reply, None a reply that holds no JSON;
+    an exception is raised, as a failed call would."""
 
     name = "scripted"
 
-    def __init__(self, *replies: dict | str | None):
+    def __init__(self, *replies: dict | str | Exception | None):
         self.replies = list(replies)
         self.prompts: list[str] = []
 
     def complete(self, system: str, user: str, *, schema: dict | None = None, purpose: str = "parse") -> LLMReply:
         self.prompts.append(user)
         reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
         if isinstance(reply, str):
             return LLMReply(text=reply, usage=Usage(calls=1))
         return LLMReply(text="", data=reply, usage=Usage(calls=1))

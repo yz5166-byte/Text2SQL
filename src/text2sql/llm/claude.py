@@ -15,7 +15,7 @@ import anthropic
 from text2sql.config import settings
 from text2sql.llm.base import LLMError, LLMReply, Usage, extract_json
 
-EFFORT = {"parse": "low", "summarize": "low", "generate": "medium"}
+EFFORT = {"parse": "low", "summarize": "low", "select": "low", "prune": "low", "generate": "medium"}
 
 
 class ClaudeClient:

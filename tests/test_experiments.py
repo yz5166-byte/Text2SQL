@@ -5,7 +5,7 @@ import pytest
 from text2sql.eval.cost import PRICES, price_for, request_cost
 import json
 
-from text2sql.eval.repeats import comparison_table, metric_table, stability, write_section
+from text2sql.eval.repeats import comparison_table, linking_table, metric_table, stability, write_section
 
 
 def test_request_cost_splits_cached_input():
@@ -96,3 +96,15 @@ def test_coverage_marks_questions_whose_tables_were_all_retrieved():
     cases = {"a": ("q", "SELECT * FROM loan JOIN client USING (client_id)"),
              "b": ("q", "WITH x AS (SELECT * FROM district) SELECT * FROM x JOIN loan USING (district_id)")}
     assert coverage(Stub(), cases) == {"a": True, "b": False}
+
+
+def test_linking_table_compares_the_context_with_the_gold_needs(tmp_path):
+    preds = [{"item_id": "x", "context_tables": ["loan", "account"], "context_columns": ["loan.amount", "loan.loan_id"]},
+             {"item_id": "y", "context_tables": ["loan"], "context_columns": None}]
+    (tmp_path / "r").mkdir()
+    (tmp_path / "r" / "predictions.jsonl").write_text("\n".join(map(json.dumps, preds)), encoding="utf-8")
+    gold = {"x": ({"loan"}, {"loan.amount", "loan.status"}), "y": ({"loan", "client"}, {"loan.status"})}
+    columns_of = {"loan": ["loan.loan_id", "loan.amount", "loan.status"]}
+    table = linking_table({"A": ["r"]}, gold, columns_of, runs_dir=tmp_path)
+    # x: tables complete, 1 of 2 columns kept (pruned); y: client missing, status kept (not pruned)
+    assert "| A | 50.0% | 66.7% | 1.5 | 2.5 |" in table

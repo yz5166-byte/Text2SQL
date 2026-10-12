@@ -4,6 +4,7 @@
       --format-only eval/x2_format_only.yaml --section X2
   uv run python scripts/compare_runs.py --clarify --group "朴素基线=x2_naive_clarify_r*" --section X2-CLARIFY
   uv run python scripts/compare_runs.py --dataset bird --by-recall --group "Claude=x5_bird" --section X5-RECALL
+  uv run python scripts/compare_runs.py --dataset bird --distractors --linking --group "基线=x6_bird_large_base"
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ import yaml
 
 from text2sql.config import BIRD_DB_PATH, RISK_DB_PATH, ROOT, RUNS_DIR
 from text2sql.eval.dataset import DATA_ROUTES, bird_tables, load_bird_financial, load_domain_eval
-from text2sql.eval.repeats import answered_table, comparison_table, failure_table, repair_table, write_section
-from text2sql.eval.retrieval import coverage
+from text2sql.eval.distractors import with_distractors
+from text2sql.eval.repeats import (answered_table, comparison_table, failure_table, linking_table, repair_table,
+                                   write_section)
+from text2sql.eval.retrieval import coverage, gold_columns, gold_tables
 from text2sql.eval.runner import gold_result_sets
-from text2sql.knowledge.retriever import TableRetriever
+from text2sql.knowledge.retriever import TableRetriever, key_columns
 from text2sql.semantic.registry import load_semantic_model
 
 
@@ -32,6 +35,10 @@ def main() -> None:
     ap.add_argument("--section", help="report section to write, such as X2")
     ap.add_argument("--format-only", help="YAML of item ids whose differences are only in output form")
     ap.add_argument("--clarify", action="store_true", help="questions that should be clarified: rate answered")
+    ap.add_argument("--routes", help="domain set only: comma-separated gold routes to keep, such as L3")
+    ap.add_argument("--distractors", action="store_true", help="runs made on the large schema (with --linking)")
+    ap.add_argument("--linking", action="store_true",
+                    help="layer 3's context against the gold SQL: tables complete, non-key gold columns kept")
     ap.add_argument("--by-recall", action="store_true",
                     help="BIRD only: group by whether the default retrieval finds every table the gold SQL reads")
     args = ap.parse_args()
@@ -45,6 +52,7 @@ def main() -> None:
             found = coverage(retriever, {i.id: (f"{i.question} {i.evidence or ''}", i.gold_sql) for i in items})
             groups_of = {iid: "recalled" if ok else "missed" for iid, ok in found.items()}
     else:
+        wanted = args.routes.split(",") if args.routes else wanted
         items, key = [i for i in load_domain_eval() if i.route in wanted and args.split in ("all", i.split)], "per_item"
         groups_of = {i.id: i.route for i in items}
     runs = sorted(d.name for d in RUNS_DIR.iterdir())
@@ -54,7 +62,15 @@ def main() -> None:
         groups[label] = [n for n in runs if fnmatch(n, pattern)]
         if not groups[label]:
             raise SystemExit(f"no run matches {pattern}")
-    if args.clarify:
+    if args.linking:
+        model = load_semantic_model()
+        model = model.restricted_to(bird_tables()) if args.dataset == "bird" else model
+        model = with_distractors(model) if args.distractors else model
+        keys = key_columns(model)
+        gold = {i.id: (gold_tables(i.gold_sql, model.tables), gold_columns(i.gold_sql, model) - keys) for i in items}
+        columns_of = {t: [f"{t}.{c}" for c in table.columns] for t, table in model.tables.items()}
+        table = linking_table(groups, gold, columns_of)
+    elif args.clarify:
         table = answered_table(groups, set(groups_of))
     elif args.repairs:
         table = repair_table(groups, set(groups_of), key)

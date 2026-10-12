@@ -1,7 +1,9 @@
-"""Retrieval evaluation: are the tables a gold SQL statement reads among the retrieved ones?
+"""Retrieval evaluation: are the tables and columns a gold SQL statement reads among the retrieved ones?
 
 A question whose tables are not all retrieved cannot be answered correctly, so besides the
-recall over tables the report counts the questions with complete coverage.
+recall over tables the report counts the questions with complete coverage. Columns are
+resolved to their tables through aliases and subqueries (sqlglot's qualify and scopes); the
+literals a gold statement compares a column with are the values the value index should find.
 """
 
 from __future__ import annotations
@@ -11,8 +13,11 @@ from dataclasses import dataclass
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer.qualify import qualify
+from sqlglot.optimizer.scope import traverse_scope
 
 from text2sql.knowledge.retriever import TableRetriever
+from text2sql.semantic.registry import SemanticModel
 
 
 def gold_tables(sql: str, catalog_tables: Collection[str]) -> set[str]:
@@ -21,6 +26,41 @@ def gold_tables(sql: str, catalog_tables: Collection[str]) -> set[str]:
     ctes = {cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE)}
     read = {t.name.lower() for t in tree.find_all(exp.Table)} - ctes
     return read & {t.lower() for t in catalog_tables}
+
+
+def gold_columns(sql: str, model: SemanticModel) -> set[str]:
+    """Catalog columns the statement reads, as "table.column"."""
+    return {column for column, _ in _resolved(sql, model)}
+
+
+def gold_values(sql: str, model: SemanticModel) -> set[tuple[str, str]]:
+    """("table.column", literal) for every column compared with a string literal by =, IN or LIKE."""
+    out = set()
+    for column, node in _resolved(sql, model):
+        parent = node.parent
+        if isinstance(parent, (exp.EQ, exp.Like)):
+            literals = [parent.left, parent.right]
+        elif isinstance(parent, exp.In) and parent.this is node:
+            literals = parent.expressions
+        else:
+            continue
+        out |= {(column, lit.name) for lit in literals if isinstance(lit, exp.Literal) and lit.is_string}
+    return out
+
+
+def _resolved(sql: str, model: SemanticModel) -> list[tuple[str, exp.Column]]:
+    """Each column reference with the catalog column it reads; references to CTEs and subqueries are skipped."""
+    schema = {t: {c: col.type for c, col in table.columns.items()} for t, table in model.tables.items()}
+    names = {(t.lower(), c.lower()): f"{t}.{c}" for t, table in model.tables.items() for c in table.columns}
+    tree = qualify(sqlglot.parse_one(sql, read="sqlite"), schema=schema, dialect="sqlite",
+                   validate_qualify_columns=False, quote_identifiers=False)
+    out = []
+    for scope in traverse_scope(tree):
+        for column in scope.columns:
+            source = scope.sources.get(column.table)
+            if isinstance(source, exp.Table) and (source.name.lower(), column.name.lower()) in names:
+                out.append((names[(source.name.lower(), column.name.lower())], column))
+    return out
 
 
 @dataclass

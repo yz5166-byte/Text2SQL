@@ -26,6 +26,7 @@ class Column(BaseModel):
     name_zh: str
     description: str = ""
     dimension: str | None = None
+    distinct: int | None = None  # distinct values in the full table, when the database holds only a sample
 
 
 class Table(BaseModel):

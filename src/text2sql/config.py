@@ -17,6 +17,10 @@ RAW_DIR = DATA_DIR / "raw"
 BIRD_DB_PATH = DATA_DIR / "financial.sqlite"  # pristine BIRD database, used for the BIRD benchmark
 RISK_DB_PATH = DATA_DIR / "bank_risk.sqlite"  # BIRD tables plus the derived DWD / ADS risk layer
 BIRD_DESC_DIR = DATA_DIR / "bird_financial_description"
+# Distractor tables from BIRD's other dev databases (scripts/build_distractors.py), for a large-schema evaluation
+DISTRACTOR_DB_PATH = DATA_DIR / "bird_distractors.sqlite"  # at most 1,000 rows per table
+DISTRACTOR_CATALOG = DATA_DIR / "bird_distractors.json"
+DISTRACTOR_DESC_DIR = DATA_DIR / "bird_distractor_description"
 SEMANTIC_DIR = ROOT / "semantic"
 EVAL_DIR = ROOT / "eval"
 RUNS_DIR = ROOT / "runs"

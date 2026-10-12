@@ -67,3 +67,9 @@ def test_misplaced_filter_is_repairable():
 def test_find_value_mentions_in_text():
     found = find_value_mentions("1998年10月南摩拉维亚的风险账户数", model, ["region"])
     assert [(m.key, m.codes) for m in found] == [("region", ("south Moravia",))]
+
+
+def test_dimensions_are_found_by_name_and_alias():
+    from text2sql.semantic.linker import find_dimension_mentions
+    found = find_dimension_mentions("1998年各地区按卡等级的持卡人数", load_semantic_model())
+    assert [(m.key, m.surface) for m in found] == [("region", "各地区"), ("card_type", "卡等级")]

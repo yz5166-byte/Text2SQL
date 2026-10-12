@@ -150,6 +150,32 @@ def comparison_table(groups: dict[str, list[str]], routes: dict[str, str], forma
     return "\n".join(lines)
 
 
+def linking_table(groups: dict[str, list[str]], gold: dict[str, tuple[set[str], set[str]]],
+                  columns_of: dict[str, list[str]], runs_dir: Path = RUNS_DIR) -> str:
+    """What layer 3 handed to generation, against what the gold SQL needs (experiment X6).
+
+    `gold` maps an item to (tables, non-key columns as "table.column") of its gold SQL; `columns_of`
+    lists each table's columns, for a run that did not prune. Averaged over the group's runs.
+    """
+    lines = ["| 方案 | 所需表齐全 | 非键金标字段保留 | 平均表数 | 平均字段数 |", "|---|---|---|---|---|"]
+    for label, names in groups.items():
+        complete, kept, needed, tables, columns = [], 0, 0, [], []
+        for name in names:
+            preds = _predictions(runs_dir, name, gold)
+            for iid, (need_tables, need_columns) in gold.items():
+                p = preds[iid]
+                ctx_tables = set(p.get("context_tables") or [])
+                ctx_columns = set(p["context_columns"]) if p.get("context_columns") is not None else \
+                    {c for t in ctx_tables for c in columns_of.get(t, [])}
+                complete.append(need_tables <= ctx_tables)
+                kept, needed = kept + len(need_columns & ctx_columns), needed + len(need_columns)
+                tables.append(len(ctx_tables))
+                columns.append(len(ctx_columns))
+        lines.append(f"| {label} | {sum(complete) / len(complete):.1%} | {kept / needed:.1%} | "
+                     f"{statistics.mean(tables):.1f} | {statistics.mean(columns):.1f} |")
+    return "\n".join(lines)
+
+
 def repair_table(groups: dict[str, list[str]], ids: set[str], key: str = "per_item",
                  runs_dir: Path = RUNS_DIR) -> str:
     """How the repair loop behaved: attempts per question, how often a repair was needed and paid off."""

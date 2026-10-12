@@ -33,6 +33,8 @@ class Prediction(BaseModel):
     clarify_candidates: list[str] = []
     answer: str | None = None
     trace: list[dict] = []  # every step of the request: name, detail, elapsed_ms
+    context_tables: list[str] = []  # layer 3: the tables handed to generation
+    context_columns: list[str] | None = None  # layer 3: the columns kept by pruning; None when not pruned
 
 
 def slot_scores(pred: QueryIR, item: EvalItem) -> dict[str, bool]:

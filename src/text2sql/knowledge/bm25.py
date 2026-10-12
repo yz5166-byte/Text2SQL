@@ -1,4 +1,10 @@
-"""BM25 over mixed Chinese and English text: Chinese as character bigrams, English as words."""
+"""BM25 over mixed Chinese and English text: Chinese as character bigrams, English as words.
+
+English words lose a plural ending (accounts, districts, salaries), on documents and questions
+alike, so that a question about accounts finds the account table. Measured on 75 tables (BIRD
+financial plus the distractor tables), this raised the BIRD questions with every needed table
+among the top 5 from 35 to 42 of 106 (scripts/eval_retrieval.py --distractors).
+"""
 
 from __future__ import annotations
 
@@ -12,12 +18,23 @@ WORD = re.compile(r"[a-z0-9]+")
 
 
 def tokenize(text: str) -> list[str]:
-    """English words (snake_case split) plus the character bigrams of each Chinese run."""
+    """English words (snake_case split, plural ending removed) plus the character bigrams of each Chinese run."""
     text = text.lower()
-    tokens = WORD.findall(text.replace("_", " "))
+    tokens = [singular(w) for w in WORD.findall(text.replace("_", " "))]
     for run in CHINESE_RUN.findall(text):
         tokens += [run[i:i + 2] for i in range(len(run) - 1)] or [run]
     return tokens
+
+
+def singular(word: str) -> str:
+    """A crude plural strip, the same on both sides of the match: salaries -> salary, accounts -> account."""
+    if len(word) <= 3:
+        return word
+    if word.endswith("ies"):
+        return word[:-3] + "y"
+    if word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
 
 
 class BM25:

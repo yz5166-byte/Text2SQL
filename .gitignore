@@ -227,3 +227,7 @@ data/*.sqlite-journal
 runs/
 .cache/
 data/bird_financial_description/
+
+# BIRD distractor tables for the large-schema evaluation (scripts/build_distractors.py)
+data/bird_distractors.json
+data/bird_distractor_description/

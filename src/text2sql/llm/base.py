@@ -41,8 +41,9 @@ class LLMClient(Protocol):
         """One chat completion. With `schema`, the reply is a JSON object matching it.
 
         `purpose` selects per-task settings: "parse" (routing and slot extraction, fast),
-        "summarize" (one-sentence answer summary, fast) or "generate" (layer-3 SQL generation,
-        more reasoning).
+        "summarize" (one-sentence answer summary, fast), "select" and "prune" (layer-3
+        table selection and column pruning, fast) or "generate" (layer-3 SQL generation, more
+        reasoning).
         """
         ...
 

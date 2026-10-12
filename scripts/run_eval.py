@@ -18,6 +18,7 @@ from datetime import datetime
 from text2sql.config import BIRD_DB_PATH, RISK_DB_PATH, settings
 from text2sql.db.executor import SQLiteExecutor
 from text2sql.eval.dataset import DATA_ROUTES, bird_tables, load_bird_financial, load_domain_eval
+from text2sql.eval.distractors import distractor_db, with_distractors
 from text2sql.eval.runner import agent_predictor, generation_predictor, oracle_ir_predictor, run
 from text2sql.llm import get_llm
 from text2sql.pipeline.layer3 import NAIVE, GenerativeSQL, Layer3Options
@@ -34,6 +35,14 @@ VARIANTS = {  # layer-3 configurations for --mode all-l3 (experiment X3)
     "full-schema": Layer3Options(schema="full"),  # X4: every table instead of the retrieved ones
     "bm25": Layer3Options(retrieval="bm25"),
     "vector": Layer3Options(retrieval="vector"),
+    "column-linking": Layer3Options(column_linking=True),  # X6: value index and column ranking
+    "table-selection": Layer3Options(table_selection=True),  # X6: the model filters the candidate tables
+    "column-pruning": Layer3Options(column_pruning=True),  # X6: the model prunes the columns of the final tables
+    # X6, cumulative: column-level linking, then table selection, then column pruning; pool of 5 or 20 tables
+    "linking-selection": Layer3Options(column_linking=True, table_selection=True),
+    "all-linking": Layer3Options(column_linking=True, table_selection=True, column_pruning=True),
+    "all-linking-k20": Layer3Options(column_linking=True, table_selection=True, column_pruning=True, top_k=20),
+    "full-k20": Layer3Options(top_k=20),
 }
 
 
@@ -46,6 +55,8 @@ def main() -> None:
     ap.add_argument("--mode", choices=["full", "oracle", "all-l3", "naive"], default="full",
                     help="full pipeline; gold IR; every data question to layer 3 (X2, X3); plain text-to-SQL (X2)")
     ap.add_argument("--variant", choices=list(VARIANTS), default="full", help="layer-3 configuration for all-l3")
+    ap.add_argument("--distractors", action="store_true",
+                    help="layer 3 on the large schema: BIRD's other dev tables mixed in (scripts/build_distractors.py)")
     ap.add_argument("--no-fast-path", action="store_true")
     ap.add_argument("--name")
     ap.add_argument("--repeats", type=int, default=1, help="independent runs, named <name>_r1, <name>_r2 ...")
@@ -68,6 +79,11 @@ def main() -> None:
             items = [i for i in items if i.split == args.split]
         agent = Text2SQLAgent(llm=llm, use_fast_path=not args.no_fast_path, max_rows=settings.eval_max_rows)
         model, executor = agent.model, agent.executor
+    if args.distractors:
+        if args.mode not in ("all-l3", "naive"):
+            raise SystemExit("--distractors applies to layer 3: use --mode all-l3 or naive")
+        model = with_distractors(model)
+        executor = SQLiteExecutor(distractor_db(gold_db), max_rows=settings.eval_max_rows)
     if args.mode == "oracle":
         items = [i for i in items if i.route in ("L1", "L2")]
         predictor = oracle_ir_predictor(agent)
@@ -83,7 +99,7 @@ def main() -> None:
     split = "bird" if args.dataset == "bird" else args.split
     base = args.name or f"{args.mode}_{provider}_{split}_{datetime.now():%Y%m%d_%H%M%S}"
     meta = {"dataset": args.dataset, "split": split, "provider": provider, "mode": args.mode, "variant": args.variant,
-            "fast_path": not args.no_fast_path, "llm": getattr(llm, "name", None), "n": len(items)}
+            "fast_path": not args.no_fast_path, "distractors": args.distractors, "llm": getattr(llm, "name", None), "n": len(items)}
     for k in range(1, args.repeats + 1):
         name = base if args.repeats == 1 else f"{base}_r{k}"
         metrics = run(items, predictor, gold_db, name, meta)

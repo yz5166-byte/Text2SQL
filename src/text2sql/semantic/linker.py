@@ -69,6 +69,16 @@ def find_metric_mentions(text: str, model: SemanticModel) -> list[Mention]:
     ])
 
 
+def find_dimension_mentions(text: str, model: SemanticModel) -> list[Mention]:
+    """Dimensions named in free text by name or alias (地区, 卡等级), keyed by dimension."""
+    return longest_match([
+        Mention(key, term, s, e)
+        for key, dim in model.dimensions.items()
+        for term in dict.fromkeys([dim.name, *dim.aliases])
+        for s, e in _occurrences(text, term)
+    ])
+
+
 def find_ambiguous_terms(text: str, model: SemanticModel) -> list[Mention]:
     """Ambiguous words that are not part of a longer metric name or alias."""
     metrics = find_metric_mentions(text, model)
