@@ -42,6 +42,7 @@ class Settings:
     max_rows: int = int(os.getenv("MAX_ROWS", "1000"))  # rows kept for display
     eval_max_rows: int = int(os.getenv("EVAL_MAX_ROWS", "50000"))  # BIRD has gold results of 15,140 rows
     max_repair_attempts: int = int(os.getenv("MAX_REPAIR_ATTEMPTS", "3"))
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "bge-m3")  # or bge-small-zh (knowledge/embedding.py)
 
 
 settings = Settings()

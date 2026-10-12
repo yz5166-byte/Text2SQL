@@ -99,7 +99,7 @@ def main() -> None:
     split = "bird" if args.dataset == "bird" else args.split
     base = args.name or f"{args.mode}_{provider}_{split}_{datetime.now():%Y%m%d_%H%M%S}"
     meta = {"dataset": args.dataset, "split": split, "provider": provider, "mode": args.mode, "variant": args.variant,
-            "fast_path": not args.no_fast_path, "distractors": args.distractors, "llm": getattr(llm, "name", None), "n": len(items)}
+            "fast_path": not args.no_fast_path, "distractors": args.distractors, "embedding": settings.embedding_model, "llm": getattr(llm, "name", None), "n": len(items)}
     for k in range(1, args.repeats + 1):
         name = base if args.repeats == 1 else f"{base}_r{k}"
         metrics = run(items, predictor, gold_db, name, meta)

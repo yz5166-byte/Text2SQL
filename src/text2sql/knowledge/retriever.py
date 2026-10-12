@@ -10,12 +10,12 @@ names (values.py), join the candidates before the bridge is computed.
 
 Columns are ranked the same way, one document per column, optionally within given tables.
 
-The embedding model (bge-small-zh) is a Chinese model, so the schema retrievers' default hybrid
-ranking falls back to BM25 alone for a query without Chinese characters: on 75 tables its rankings of English BIRD questions left
-no question with every needed table among the top 5, and fused with BM25 they pulled it from 35
-to 8 of 106. Schema documents carry English column names and BIRD's English notes, which BM25
-can match; the example library (examples.py) holds Chinese questions only, where the vector
-model's cross-language similarity is the one signal left, so it keeps the fusion.
+With a Chinese-only embedding model (bge-small-zh), the schema retrievers' hybrid ranking falls
+back to BM25 alone for a query without Chinese characters: on 75 tables that model's rankings of
+English BIRD questions left no question with every needed table among the top 5, and fused with
+BM25 they pulled it from 36 to 9 of 106. The multilingual default (bge-m3) needs no such rule:
+fused, it finds 56 (scripts/eval_retrieval.py --distractors). The example library (examples.py)
+holds Chinese questions only and always keeps the fusion.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ class HybridIndex:
 class TableRetriever:
     def __init__(self, model: SemanticModel, method: Method = "hybrid", k: int = 5, bridge: bool = True):
         self.k, self.bridge = k, bridge
-        self.index = HybridIndex(table_units(model), method, bm25_unless_chinese=True)
+        self.index = HybridIndex(table_units(model), method, bm25_unless_chinese=not embedding.multilingual())
         self.graph = foreign_key_graph(model)
 
     def retrieve(self, text: str, linked: list[str] = ()) -> Retrieval:
@@ -94,7 +94,7 @@ class ColumnRetriever:
     """Detailed column documents by default: they recall more of the non-key columns (scripts/eval_columns.py)."""
 
     def __init__(self, model: SemanticModel, method: Method = "hybrid", detailed: bool = True):
-        self.index = HybridIndex(column_units(model, detailed), method, bm25_unless_chinese=True)
+        self.index = HybridIndex(column_units(model, detailed), method, bm25_unless_chinese=not embedding.multilingual())
 
     def rank(self, text: str, tables: list[str] | None = None) -> list[str]:
         """Columns as "table.column", best first; only those of `tables` when given."""

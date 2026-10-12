@@ -26,7 +26,8 @@ def test_a_query_without_chinese_is_ranked_by_bm25_alone():
     from text2sql.knowledge.retriever import HybridIndex
     index = HybridIndex({"loan": "loan amount 贷款", "card": "card type 卡"}, "hybrid", bm25_unless_chinese=True)
     assert index.rank("loan amounts")[0] == "loan" and index._vectors is None  # no embedding computed
-    assert TableRetriever(model).index.bm25_unless_chinese  # the schema retrievers; examples keep the fusion
+    # only the schema retrievers, and only with a Chinese-only model; examples always keep the fusion
+    assert TableRetriever(model).index.bm25_unless_chinese == (not embedding.multilingual())
 
 
 def test_bm25_prefers_the_rarer_shared_term():
@@ -92,3 +93,17 @@ def test_linked_tables_join_the_candidates_before_the_bridge():
     assert plain.tables == linked.tables == ["loan"] and plain.linked == [] and plain.bridged == []
     assert linked.linked == ["district"] and linked.bridged == ["account"]  # loan - account - district
     assert linked.all == ["loan", "district", "account"]
+
+
+@pytest.mark.skipif(not embedding.model_cached(), reason="embedding model not downloaded")
+def test_vectors_are_cached_on_disk(tmp_path, monkeypatch):
+    monkeypatch.setattr(embedding, "VECTOR_DIR", tmp_path)
+    first = embedding.embed(["loan amount", "贷款金额"])
+    assert len(list(tmp_path.rglob("*.npy"))) == 2
+    assert abs(float(embedding.embed(["loan amount"])[0] @ first[0]) - 1) < 1e-5
+
+
+@pytest.mark.skipif(not (embedding.model_cached() and embedding.multilingual()), reason="needs the multilingual model")
+def test_the_multilingual_model_puts_chinese_and_english_together():
+    zh, en, other = embedding.embed(["每个地区的贷款金额", "loan amount by region", "card type of the client"])
+    assert zh @ en > zh @ other + 0.2
